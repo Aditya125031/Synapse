@@ -14,7 +14,7 @@ router = APIRouter()
 
 # Initialize API clients safely
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_JWT_SECRET")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
@@ -36,11 +36,11 @@ async def sync_to_hive(
     try:
         # 1. Turn the text into a Gemini Vector
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001", # <-- UPDATED MODEL
             content=req.content,
             task_type="retrieval_document",
+            output_dimensionality=768 # <-- ADDED THIS
         )
-        vector_data = result['embedding']
 
         # 2. Save to Supabase
         supabase.table("note_chunks").insert({
@@ -80,9 +80,10 @@ async def process_pdf(
 
         # Batch embed all chunks at once with Gemini
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001", # <-- UPDATED MODEL
             content=chunks,
             task_type="retrieval_document",
+            output_dimensionality=768 # <-- ADDED THIS
         )
         
         insert_data = []
