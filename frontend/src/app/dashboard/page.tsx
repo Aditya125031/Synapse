@@ -3,14 +3,115 @@
 import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
-import { useState } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, LogOut } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, LogOut, X, Folder } from 'lucide-react'
+import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
-    const [activeCourse, setActiveCourse] = useState("dbms")
+    const [courses, setCourses] = useState<{ id: string, name: string }[]>([])
+    const [activeCourseId, setActiveCourseId] = useState<string | null>(null)
+    const [isCourseModalOpen, setIsCourseModalOpen] = useState(false)
+    const [isChapterModalOpen, setIsChapterModalOpen] = useState(false)
+    const [newCourseForm, setNewCourseForm] = useState({ name: '', semester: '' })
+    const [newChapterForm, setNewChapterForm] = useState({ name: '' })
+
+    useEffect(() => {
+        const fetchCourses = async () => {
+            const { data, error } = await supabase
+                .from('courses')
+                .select('id, name');
+
+            if (error) {
+                console.error("Error fetching courses:", error);
+                return;
+            }
+
+            if (data) {
+                setCourses(data);
+                // Auto-select the first course if it exists
+                if (data.length > 0 && !activeCourseId) {
+                    setActiveCourseId(data[0].id);
+                }
+            }
+        };
+
+        fetchCourses();
+    }, []); // Empty dependency array means this runs once on mount
+
+    const handleCreateCourse = async () => {
+        try {
+            // 1. Get the current user's secure token
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (!session) {
+                alert("You must be logged in!");
+                return;
+            }
+
+            const res = await fetch("http://localhost:8000/api/courses/create-course", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    // 2. Attach the token to bypass the 401 block
+                    "Authorization": `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify(newCourseForm)
+            });
+
+            if (res.ok) {
+                setIsCourseModalOpen(false);
+                setNewCourseForm({ name: '', semester: '' });
+                alert("Course Created!");
+            } else {
+                const err = await res.json();
+                alert(err.detail);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleCreateChapter = async () => {
+        if (!activeCourseId) {
+            alert("Please select or create a course first.");
+            return;
+        }
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (!session) {
+                alert("You must be logged in!");
+                return;
+            }
+
+            const res = await fetch("http://localhost:8000/api/courses/create-chapter", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                    name: newChapterForm.name,
+                    course_id: activeCourseId // <-- Using the actual UUID now
+                })
+            });
+
+            if (res.ok) {
+                setIsChapterModalOpen(false);
+                setNewChapterForm({ name: '' });
+                alert("Chapter Created!");
+            } else {
+                const err = await res.json();
+                alert(err.detail);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     return (
-        <div className="min-h-screen bg-[#050508] text-white flex overflow-hidden font-sans">
+        <div className="h-screen w-full bg-[#050508] text-white flex overflow-hidden font-sans">
 
             {/* LEFT SIDEBAR */}
             <aside className="w-72 border-r border-white/10 bg-[#050508] flex flex-col relative z-20">
@@ -29,7 +130,7 @@ export default function Dashboard() {
                         <div className="flex items-center justify-between text-xs font-bold text-indigo-300/50 uppercase tracking-widest mb-3 px-2">
                             <span className="flex items-center"><BookOpen className="w-3.5 h-3.5 mr-2" /> Current Semester</span>
                             <button
-                                onClick={() => alert("Trigger Create Course Modal Here")}
+                                onClick={() => setIsCourseModalOpen(true)}
                                 className="hover:text-cyan-400 transition-colors p-1"
                                 title="Create New Course"
                             >
@@ -38,29 +139,35 @@ export default function Dashboard() {
                         </div>
 
                         <div className="space-y-1">
-                            <button
-                                onClick={() => setActiveCourse("dbms")}
-                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all ${activeCourse === "dbms" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
-                            >
-                                <span className="truncate">Database Management</span>
-                                <ChevronRight className={`w-4 h-4 transition-transform ${activeCourse === "dbms" ? "rotate-90 text-cyan-400" : ""}`} />
-                            </button>
+                            {courses.map(course => (
+                                <div
+                                    key={course.id}
+                                    onClick={() => setActiveCourseId(course.id)}
+                                    className={`px-4 py-2 my-1 mx-2 rounded-lg cursor-pointer flex items-center justify-between group ${
+                                        activeCourseId === course.id
+                                            ? 'bg-white/5 border border-white/10'
+                                            : 'hover:bg-white/5 border border-transparent hover:border-white/10'
+                                    } transition-all`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <Folder className={`w-4 h-4 ${activeCourseId === course.id ? 'text-cyan-400' : 'text-white/40'}`} />
+                                        <span className={`text-sm font-medium ${activeCourseId === course.id ? 'text-white' : 'text-white/60'}`}>
+                                            {course.name}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
 
-                            {/* Nested Chapters */}
-                            {activeCourse === "dbms" && (
+                            {/* Nested Chapters (shown for active course) */}
+                            {activeCourseId && (
                                 <div className="pl-4 pr-2 py-2 space-y-1 border-l-2 border-white/5 ml-4 mt-1">
 
                                     {/* Create Chapter Button */}
                                     <button
-                                        onClick={() => alert("Trigger Create Chapter Modal Here")}
+                                        onClick={() => setIsChapterModalOpen(true)}
                                         className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-white/20 text-white/40 hover:text-white/80 hover:border-white/40 transition-all mb-2"
                                     >
                                         + Propose New Chapter
-                                    </button>
-
-                                    <button className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm bg-indigo-500/10 text-indigo-200 border border-indigo-500/20">
-                                        <span className="flex items-center gap-2"><Hash className="w-3 h-3" /> Normalization</span>
-                                        <span className="flex items-center gap-1 text-[10px] bg-indigo-500/20 px-1.5 py-0.5 rounded-md"><CloudLightning className="w-3 h-3" /> 12 Active</span>
                                     </button>
                                 </div>
                             )}
@@ -90,7 +197,7 @@ export default function Dashboard() {
             </aside>
 
             {/* MAIN CONTENT AREA */}
-            <main className="flex-1 flex flex-col relative z-10 h-screen">
+            <main className="flex-1 flex flex-col relative z-10 h-full overflow-hidden">
 
                 {/* TOP HEADER */}
                 <header className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-[#050508]/80 backdrop-blur-md sticky top-0 z-50">
@@ -119,7 +226,7 @@ export default function Dashboard() {
                 </header>
 
                 {/* WORKSPACE AREA (Split Screen) */}
-                <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden">
+                <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden min-h-0">
 
                     {/* LEFT: Editor Panel */}
                     <div className="h-full">
@@ -133,6 +240,57 @@ export default function Dashboard() {
 
                 </div>
             </main>
+
+            {/* Course Modal */}
+            {isCourseModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-white/10 p-6 rounded-2xl w-96 relative">
+                        <button onClick={() => setIsCourseModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h3 className="text-xl font-bold mb-4 text-cyan-400">Create Course</h3>
+                        <input
+                            type="text" placeholder="Course Name (e.g., DBMS)"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white focus:border-cyan-500 outline-none"
+                            value={newCourseForm.name} onChange={e => setNewCourseForm({ ...newCourseForm, name: e.target.value })}
+                        />
+                        <input
+                            type="text" placeholder="Semester (e.g., 4th Sem)"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white focus:border-cyan-500 outline-none"
+                            value={newCourseForm.semester} onChange={e => setNewCourseForm({ ...newCourseForm, semester: e.target.value })}
+                        />
+                        <button
+                            onClick={handleCreateCourse}
+                            className="w-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 py-2 rounded-lg hover:bg-cyan-500/30 transition-colors"
+                        >
+                            Submit (1 per 30 Days)
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Chapter Modal */}
+            {isChapterModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-white/10 p-6 rounded-2xl w-96 relative">
+                        <button onClick={() => setIsChapterModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h3 className="text-xl font-bold mb-4 text-indigo-400">Propose Chapter</h3>
+                        <input
+                            type="text" placeholder="Chapter Name (e.g., Normalization)"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white focus:border-indigo-500 outline-none"
+                            value={newChapterForm.name} onChange={e => setNewChapterForm({ ...newChapterForm, name: e.target.value })}
+                        />
+                        <button
+                            onClick={handleCreateChapter}
+                            className="w-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 py-2 rounded-lg hover:bg-indigo-500/30 transition-colors"
+                        >
+                            Submit (1 per 14 Days)
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

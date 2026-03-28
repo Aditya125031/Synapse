@@ -75,7 +75,7 @@ async def sync_to_hive(
 @router.post("/upload-pdf")
 async def process_pdf(
     file: UploadFile = File(...),
-    chapter_id: str = Form("dummy-chapter-id"), # Form data for file uploads
+    chapter_id: str = Form(...), # <-- Now it requires the actual UUID
     current_user: dict = Depends(get_current_user)
 ):
     try:
