@@ -1,0 +1,19 @@
+# --- Frontend (Node.js / Next.js) ---
+node_modules/
+.next/
+out/
+build/
+
+# --- Backend (Python) ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.pytest_cache/
+
+# --- Environment Variables (Crucial!) ---
+.env
+.env.local
+.env.development
+.env.production
