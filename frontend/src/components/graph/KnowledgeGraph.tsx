@@ -40,16 +40,18 @@ export default function KnowledgeGraph({ nodes = [], links = [] }: { nodes?: any
       </button>
 
       {/* The 3D Canvas */}
-      <div className="flex-1 w-full h-full">
-         <ForceGraph3D
-            graphData={graphData}
-            backgroundColor="rgba(0,0,0,0)"
-            nodeLabel="name"
-            nodeColor="color"
-            nodeRelSize={6}
-            linkColor={() => 'rgba(255,255,255,0.2)'}
-            linkWidth={1.5}
-         />
+      <div className="flex-1 w-full relative min-h-0">
+          <div className="absolute inset-0">
+             <ForceGraph3D
+                graphData={graphData}
+                backgroundColor="rgba(0,0,0,0)"
+                nodeLabel="name"
+                nodeColor="color"
+                nodeRelSize={6}
+                linkColor={() => 'rgba(255,255,255,0.2)'}
+                linkWidth={1.5}
+             />
+          </div>
       </div>
 
       {/* Embedded Doubt Modal */}
