@@ -5,3 +5,7 @@ pydantic-settings
 python-jose[cryptography]
 httpx
 neo4j
+python-multipart
+"pydantic[email]"
+pypdf
+python-dotenv

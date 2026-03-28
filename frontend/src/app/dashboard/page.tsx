@@ -1,6 +1,7 @@
 "use client"
 
 import LiveEditor from '@/components/editor/LiveEditor'
+import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
 import { useState } from 'react'
 import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, LogOut } from 'lucide-react'
 
@@ -119,23 +120,13 @@ export default function Dashboard() {
                 <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden">
 
                     {/* LEFT: Editor Panel */}
-          <div className="h-full">
-            <LiveEditor />
-          </div>
+                    <div className="h-full">
+                        <LiveEditor />
+                    </div>
 
                     {/* RIGHT: Graph Panel */}
-                    <div className="border border-white/10 rounded-2xl bg-black/40 flex flex-col shadow-2xl relative overflow-hidden">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.05)_0%,transparent_70%)] pointer-events-none"></div>
-                        <div className="h-12 border-b border-white/10 flex items-center px-4 justify-between bg-white/[0.01] z-10">
-                            <h3 className="text-sm font-medium text-white/80">Global Knowledge Graph</h3>
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                                <span className="text-[10px] text-white/40 uppercase tracking-widest">Master Concept</span>
-                            </div>
-                        </div>
-                        <div className="flex-1 p-6 flex items-center justify-center z-10">
-                            <p className="text-white/30">3D Network Graph Goes Here</p>
-                        </div>
+                    <div className="h-full">
+                        <KnowledgeGraph />
                     </div>
 
                 </div>
