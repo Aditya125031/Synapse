@@ -3,89 +3,104 @@
 import { sb } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Mail, Lock, LogIn, UserPlus } from 'lucide-react'
 
-export default function P() {
-  const r = useRouter()
-  const [ld, setLd] = useState(false)
+export default function Landing() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   useEffect(() => {
-    const { data: { subscription: s } } = sb.auth.onAuthStateChange(async (e, sess) => {
-      if (sess && e === 'SIGNED_IN') {
-        try {
-          const t = sess.access_token
-          const usr = sess.user
-          
-          const req = await fetch('http://localhost:8000/api/auth/sync', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${t}`
-            },
-            body: JSON.stringify({
-              email: usr.email,
-              full_name: usr.user_metadata?.full_name || 'Anon',
-              avatar_url: usr.user_metadata?.avatar_url || ''
-            })
-          })
-          
-          if (req.ok) {
-            r.push('/dashboard')
-          }
-        } catch (err) {
-          setLd(false)
-        }
-      }
+    // Auto-redirect if already logged in
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.push('/dashboard')
     })
-    
-    return () => s.unsubscribe()
-  }, [r])
+  }, [router])
 
-  const login = async () => {
-    setLd(true)
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      if (isSignUp) {
+        const { error } = await sb.auth.signUp({ email, password })
+        if (error) throw error
+        alert("Account initialized! You can now log in.")
+        setIsSignUp(false)
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email, password })
+        if (error) throw error
+        router.push('/dashboard')
+      }
+    } catch (err: any) {
+      alert(err.message || "Authentication failed.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loginGoogle = async () => {
+    setLoading(true)
     await sb.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`
-      }
+      options: { redirectTo: `${window.location.origin}/dashboard` }
     })
   }
 
   return (
     <div className="min-h-screen bg-[#050508] text-white flex flex-col items-center justify-center relative overflow-hidden font-sans">
-      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-600/20 blur-[150px] rounded-full mix-blend-screen pointer-events-none"></div>
-      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-cyan-600/10 blur-[150px] rounded-full mix-blend-screen pointer-events-none"></div>
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/5 rounded-full animate-[spin_60s_linear_infinite] pointer-events-none"></div>
+      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-indigo-600/20 blur-[150px] rounded-full pointer-events-none"></div>
+      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-cyan-600/10 blur-[150px] rounded-full pointer-events-none"></div>
       
-      <div className="z-10 flex flex-col items-center max-w-3xl text-center px-4">
-        <div className="mb-4 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
-          <span className="text-xs font-medium text-cyan-200 tracking-wider uppercase">Temporal Sync Active</span>
-        </div>
-
-        <h1 className="text-7xl font-extrabold tracking-tighter mb-6 bg-gradient-to-br from-white via-indigo-200 to-cyan-500 text-transparent bg-clip-text drop-shadow-sm">
+      <div className="z-10 flex flex-col items-center w-full max-w-md px-6">
+        <h1 className="text-5xl font-extrabold tracking-tighter mb-2 bg-gradient-to-br from-white via-indigo-200 to-cyan-500 text-transparent bg-clip-text">
           Synapse
         </h1>
-        
-        <p className="text-xl text-indigo-100/70 mb-12 max-w-xl leading-relaxed font-light">
-          Chronosync your collective intelligence. Passive peer collaboration mapped and stitched in real-time.
-        </p>
-        
-        <button 
-          onClick={login} 
-          disabled={ld}
-          className="group relative px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl backdrop-blur-xl transition-all duration-300 font-semibold flex items-center gap-3 disabled:opacity-50 overflow-hidden"
-        >
-          <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:animate-[shimmer_1.5s_infinite]"></div>
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
-            <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-            <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-            <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-          </svg>
-          <span className="relative z-10 text-white tracking-wide">
-            {ld ? 'Establishing Link...' : 'Initialize with Google'}
-          </span>
-        </button>
+        <p className="text-indigo-200/60 mb-8 text-center text-sm">Chronosync your collective intelligence.</p>
+
+        {/* Auth Form */}
+        <form onSubmit={handleAuth} className="w-full bg-white/[0.02] border border-white/10 p-6 rounded-2xl backdrop-blur-xl flex flex-col gap-4 shadow-2xl">
+          
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+            <input 
+              type="email" required placeholder="Student Email" 
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-cyan-500/50 transition-all"
+            />
+          </div>
+
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+            <input 
+              type="password" required placeholder="Password" 
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-cyan-500/50 transition-all"
+            />
+          </div>
+
+          <button type="submit" disabled={loading} className="w-full py-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl font-medium transition-all flex justify-center items-center gap-2">
+            {loading ? 'Processing...' : isSignUp ? <><UserPlus className="w-4 h-4"/> Initialize Account</> : <><LogIn className="w-4 h-4"/> Access Hive</>}
+          </button>
+        </form>
+
+        <div className="mt-4 flex flex-col w-full gap-4">
+          <button onClick={() => setIsSignUp(!isSignUp)} className="text-xs text-white/40 hover:text-white transition-colors text-center">
+            {isSignUp ? "Already part of the collective? Log in." : "New to the network? Sign up."}
+          </button>
+          
+          <div className="flex items-center gap-4 w-full">
+            <div className="h-px bg-white/10 flex-1"></div>
+            <span className="text-xs text-white/30 uppercase tracking-widest">OR</span>
+            <div className="h-px bg-white/10 flex-1"></div>
+          </div>
+
+          <button onClick={loginGoogle} disabled={loading} className="w-full py-3 bg-gradient-to-r from-cyan-600/20 to-indigo-600/20 hover:from-cyan-600/40 hover:to-indigo-600/40 border border-cyan-500/30 rounded-xl text-sm font-medium transition-all text-cyan-100">
+            Continue with Google
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -1,37 +1,54 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
 import os
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Force load environment variables right here just to be safe
+load_dotenv()
 
 security = HTTPBearer()
 
-# Supabase JWT Secret (Found in your Supabase Dashboard settings)
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET") 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """
-    This function intercepts API requests, checks the token, 
-    and returns the user's Supabase ID if valid.
-    """
+# Safety check for the credentials
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("CRITICAL ERROR: Supabase URL or Key is missing in dependencies.py!")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
     token = credentials.credentials
+    
+    print("\n========== AUTH DEBUG START ==========")
+    print(f"1. Token Received. Length: {len(token)}")
+    print(f"2. Token snippet: {token[:15]}...")
+    
+    # Check if the frontend accidentally sent a literal string of "null"
+    if token == "null" or token == "undefined" or len(token) < 20:
+        print("3. ERROR: The token is invalid, null, or too short!")
+        print("========== AUTH DEBUG END ==========\n")
+        raise HTTPException(status_code=401, detail="Invalid token format sent from frontend.")
+
     try:
-        # Supabase uses HS256 algorithm by default
-        payload = jwt.decode(
-            token, 
-            SUPABASE_JWT_SECRET, 
-            algorithms=["HS256"], 
-            options={"verify_aud": False}
-        )
-        user_id: str = payload.get("sub") # 'sub' is the user ID in Supabase
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        # Ask Supabase to verify the token and return the user
+        user_response = supabase.auth.get_user(token)
         
-        # You can extract email here too if needed: payload.get("email")
-        return {"user_id": user_id, "email": payload.get("email")}
+        if not user_response or not user_response.user:
+            print("3. ERROR: Supabase verified the token but returned no user.")
+            print("========== AUTH DEBUG END ==========\n")
+            raise HTTPException(status_code=401, detail="No user found for this token.")
+            
+        print(f"3. SUCCESS! User validated. ID: {user_response.user.id}")
+        print("========== AUTH DEBUG END ==========\n")
         
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        return {"user_id": user_response.user.id}
+        
+    except Exception as e:
+        # THIS IS THE GOLDMINE. This will print the exact Supabase rejection reason.
+        print(f"3. SUPABASE VERIFICATION FAILED: {str(e)}")
+        print("========== AUTH DEBUG END ==========\n")
+        
+        # We also send the error back to the frontend so you can see it in the browser network tab
+        raise HTTPException(status_code=401, detail=f"Backend Auth Error: {str(e)}")

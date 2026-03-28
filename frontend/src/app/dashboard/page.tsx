@@ -1,6 +1,8 @@
 "use client"
 
+import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
+import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
 import { useState } from 'react'
 import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, LogOut } from 'lucide-react'
 
@@ -23,10 +25,16 @@ export default function Dashboard() {
                 {/* Course Navigation */}
                 <div className="flex-1 overflow-y-auto py-6 px-4 space-y-8 custom-scrollbar">
 
-                    {/* Course 1 */}
                     <div>
-                        <div className="flex items-center text-xs font-bold text-indigo-300/50 uppercase tracking-widest mb-3 px-2">
-                            <BookOpen className="w-3.5 h-3.5 mr-2" /> Current Semester
+                        <div className="flex items-center justify-between text-xs font-bold text-indigo-300/50 uppercase tracking-widest mb-3 px-2">
+                            <span className="flex items-center"><BookOpen className="w-3.5 h-3.5 mr-2" /> Current Semester</span>
+                            <button
+                                onClick={() => alert("Trigger Create Course Modal Here")}
+                                className="hover:text-cyan-400 transition-colors p-1"
+                                title="Create New Course"
+                            >
+                                +
+                            </button>
                         </div>
 
                         <div className="space-y-1">
@@ -38,31 +46,24 @@ export default function Dashboard() {
                                 <ChevronRight className={`w-4 h-4 transition-transform ${activeCourse === "dbms" ? "rotate-90 text-cyan-400" : ""}`} />
                             </button>
 
-                            {/* Nested Chapters (Only show if DBMS is active) */}
+                            {/* Nested Chapters */}
                             {activeCourse === "dbms" && (
                                 <div className="pl-4 pr-2 py-2 space-y-1 border-l-2 border-white/5 ml-4 mt-1">
+
+                                    {/* Create Chapter Button */}
+                                    <button
+                                        onClick={() => alert("Trigger Create Chapter Modal Here")}
+                                        className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-white/20 text-white/40 hover:text-white/80 hover:border-white/40 transition-all mb-2"
+                                    >
+                                        + Propose New Chapter
+                                    </button>
+
                                     <button className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm bg-indigo-500/10 text-indigo-200 border border-indigo-500/20">
                                         <span className="flex items-center gap-2"><Hash className="w-3 h-3" /> Normalization</span>
                                         <span className="flex items-center gap-1 text-[10px] bg-indigo-500/20 px-1.5 py-0.5 rounded-md"><CloudLightning className="w-3 h-3" /> 12 Active</span>
                                     </button>
-                                    <button className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-white/50 hover:text-white/80 transition-colors">
-                                        <span className="flex items-center gap-2"><Hash className="w-3 h-3" /> Relational Algebra</span>
-                                    </button>
-                                    <button className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-white/50 hover:text-white/80 transition-colors">
-                                        <span className="flex items-center gap-2"><Hash className="w-3 h-3" /> Concurrency Control</span>
-                                    </button>
                                 </div>
                             )}
-                        </div>
-
-                        <div className="space-y-1 mt-1">
-                            <button
-                                onClick={() => setActiveCourse("dld")}
-                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-all ${activeCourse === "dld" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
-                            >
-                                <span className="truncate">Digital Logic Design</span>
-                                <ChevronRight className={`w-4 h-4 transition-transform ${activeCourse === "dld" ? "rotate-90 text-cyan-400" : ""}`} />
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -80,7 +81,9 @@ export default function Dashboard() {
                             <p className="text-xs text-cyan-400 font-semibold truncate">420 CQ Points</p>
                         </div>
                         <button className="text-white/40 hover:text-white transition-colors">
-                            <Settings className="w-4 h-4" />
+                            <Link href="/dashboard/profile" className="text-white/40 hover:text-white transition-colors">
+                                <Settings className="w-4 h-4" />
+                            </Link>
                         </button>
                     </div>
                 </div>
@@ -119,23 +122,13 @@ export default function Dashboard() {
                 <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden">
 
                     {/* LEFT: Editor Panel */}
-          <div className="h-full">
-            <LiveEditor />
-          </div>
+                    <div className="h-full">
+                        <LiveEditor />
+                    </div>
 
                     {/* RIGHT: Graph Panel */}
-                    <div className="border border-white/10 rounded-2xl bg-black/40 flex flex-col shadow-2xl relative overflow-hidden">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.05)_0%,transparent_70%)] pointer-events-none"></div>
-                        <div className="h-12 border-b border-white/10 flex items-center px-4 justify-between bg-white/[0.01] z-10">
-                            <h3 className="text-sm font-medium text-white/80">Global Knowledge Graph</h3>
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                                <span className="text-[10px] text-white/40 uppercase tracking-widest">Master Concept</span>
-                            </div>
-                        </div>
-                        <div className="flex-1 p-6 flex items-center justify-center z-10">
-                            <p className="text-white/30">3D Network Graph Goes Here</p>
-                        </div>
+                    <div className="h-full">
+                        <KnowledgeGraph />
                     </div>
 
                 </div>
