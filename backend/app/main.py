@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import auth, notes, courses, chatbot # <-- 1. Import your new notes file here
+from app.api.routes import auth, notes, courses, chatbot, doubts
 
 app = FastAPI(title="Synapse Backend API")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(notes.router, prefix="/api/notes", tags=["Notes"]) # <-- 2. Tell FastAPI to use it here
 app.include_router(courses.router, prefix="/api/courses", tags=["Courses"])
+app.include_router(doubts.router, prefix="/api/doubts", tags=["Doubts"])
 app.include_router(chatbot.router, prefix="/api/chat", tags=["Chatbot"])
 
 @app.get("/")
