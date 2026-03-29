@@ -8,4 +8,7 @@ neo4j
 python-multipart
 "pydantic[email]"
 pypdf
+PyPDF2
 python-dotenv
+google-generativeai
+supabase
