@@ -6,6 +6,12 @@ python-jose[cryptography]
 httpx
 neo4j
 python-multipart
-"pydantic[email]"
+pydantic[email]
 pypdf
 python-dotenv
+supabase
+google-generativeai
+langgraph
+langchain-core
+openai
+sentence-transformers

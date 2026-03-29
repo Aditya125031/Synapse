@@ -9,6 +9,9 @@ import google.generativeai as genai
 from app.api.dependencies import get_current_user
 from datetime import datetime, timezone
 
+# --- NEW: Import Neo4j and the local embedding model ---
+from app.db.neo4j_client import neo4j_db, embedding_model
+
 load_dotenv()
 
 router = APIRouter()
@@ -21,12 +24,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
     raise ValueError("Missing credentials in .env file!")
 
-# Configure Google Gemini
+# Configure Google Gemini (For Supabase)
 genai.configure(api_key=GEMINI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 class SyncRequest(BaseModel):
-    chapter_id: str # Swapped to chapter_id per our new database rules
+    chapter_id: str
     content: str
 
 @router.post("/sync")
@@ -45,7 +48,9 @@ async def sync_to_hive(
                 raise HTTPException(status_code=429, detail=f"Rate Limit: You can only upload notes for this chapter once every 7 days. Try again in {7 - days_since} days.")
         # ------------------------------
 
-        # 1. Turn the text into a Gemini Vector
+        # ==========================================
+        # 1. SUPABASE LOGIC (CollabQuest Hive & Reputation)
+        # ==========================================
         result = genai.embed_content(
             model="models/gemini-embedding-001",
             content=req.content,
@@ -54,7 +59,6 @@ async def sync_to_hive(
         )
         vector_data = result['embedding']
 
-        # 2. Save to Supabase
         supabase.table("note_chunks").insert({
             "user_id": current_user["user_id"],
             "chapter_id": req.chapter_id,
@@ -62,10 +66,35 @@ async def sync_to_hive(
             "embedding": vector_data
         }).execute()
 
-        # Reward the user with 10 Reputation points for a successful sync!
         supabase.rpc("increment_reputation", {"user_id": current_user["user_id"], "amount": 10}).execute()
 
-        return {"status": "success", "message": "Node synced to collective hive"}
+
+        # ==========================================
+        # 2. NEO4J LOGIC (Synapse AI Knowledge Graph)
+        # ==========================================
+        # Generate the local 384-dimensional vector for Neo4j
+        neo4j_vector = embedding_model.encode(req.content).tolist()
+        
+        neo4j_query = """
+        CREATE (n:Note {
+            id: randomUUID(),
+            user_id: $user_id,
+            title: $title,
+            content: $content,
+            embedding: $embedding,
+            created_at: timestamp()
+        })
+        RETURN n.id AS id
+        """
+        
+        neo4j_db.execute_query(neo4j_query, {
+            "user_id": current_user["user_id"],
+            "title": f"Note for Chapter {req.chapter_id}", # Auto-generating a title
+            "content": req.content,
+            "embedding": neo4j_vector
+        })
+
+        return {"status": "success", "message": "Node synced to collective hive AND saved to Synapse Graph!"}
 
     except Exception as e:
         if isinstance(e, HTTPException): raise e
@@ -75,7 +104,7 @@ async def sync_to_hive(
 @router.post("/upload-pdf")
 async def process_pdf(
     file: UploadFile = File(...),
-    chapter_id: str = Form("dummy-chapter-id"), # Form data for file uploads
+    chapter_id: str = Form("dummy-chapter-id"),
     current_user: dict = Depends(get_current_user)
 ):
     try:
@@ -96,7 +125,6 @@ async def process_pdf(
         for page in pdf.pages:
             extracted = page.extract_text()
             if extracted:
-                # Sanitize text to prevent PostgreSQL crashes
                 sanitized_text = extracted.replace('\x00', '').replace('\u0000', '')
                 full_text += sanitized_text + "\n"
                 
@@ -106,7 +134,9 @@ async def process_pdf(
         if not chunks:
             return {"status": "error", "message": "No readable text found in PDF."}
 
-        # Batch embed all chunks at once with Gemini
+        # ==========================================
+        # 1. SUPABASE PDF LOGIC
+        # ==========================================
         result = genai.embed_content(
             model="models/gemini-embedding-001",
             content=chunks,
@@ -125,12 +155,33 @@ async def process_pdf(
             
         supabase.table("note_chunks").insert(insert_data).execute()
 
-        # Reward the user with 10 Reputation points for a successful PDF sync!
-        # (Note: You'll need a quick SQL function in Supabase for this RPC call, I'll explain below)
+        # ==========================================
+        # 2. NEO4J PDF LOGIC
+        # ==========================================
+        # Process the entire PDF as one giant context node for the Graph Chatbot
+        combined_pdf_text = " ".join(chunks)
+        neo4j_vector = embedding_model.encode(combined_pdf_text).tolist()
         
+        neo4j_query = """
+        CREATE (n:Note {
+            id: randomUUID(),
+            user_id: $user_id,
+            title: $title,
+            content: $content,
+            embedding: $embedding,
+            created_at: timestamp()
+        })
+        """
+        neo4j_db.execute_query(neo4j_query, {
+            "user_id": current_user["user_id"],
+            "title": f"PDF Document: {file.filename}",
+            "content": combined_pdf_text,
+            "embedding": neo4j_vector
+        })
+
         return {
             "status": "success", 
-            "message": f"Successfully vectorized {len(chunks)} chunks using Gemini.",
+            "message": f"Successfully vectorized {len(chunks)} chunks to Supabase & saved to Neo4j.",
             "chunks_processed": len(chunks)
         }
 
