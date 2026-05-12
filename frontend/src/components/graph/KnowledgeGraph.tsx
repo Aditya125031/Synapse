@@ -1,22 +1,107 @@
 "use client"
 
-import { useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
+import { useMemo, useState, useEffect } from 'react'
 import { MessageCircleQuestion } from 'lucide-react'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls, Line, Sphere, Text } from '@react-three/drei'
 
-const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false })
+// Interfaces
+interface NodeData {
+  id: string
+  type: string
+  course?: string
+  x?: number
+  y?: number
+  z?: number
+}
 
-export default function KnowledgeGraph({ nodes = [], links = [] }: { nodes?: any[], links?: any[] }) {
+interface LinkData {
+  source: string
+  target: string
+  type: string
+}
+
+// Subcomponents
+function GraphNode({ node }: { node: NodeData }) {
+  const color = node.type === 'master' ? '#06b6d4' : node.type === 'user' ? '#a855f7' : '#3b82f6'
+  const size = node.type === 'master' ? 0.8 : node.type === 'user' ? 0.6 : 0.4
+  
+  return (
+    <group position={[node.x || 0, node.y || 0, node.z || 0]}>
+      <Sphere args={[size, 16, 16]}>
+        <meshStandardMaterial color={color} />
+      </Sphere>
+      {/* Short label floating above */}
+      <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
+        {node.type}
+      </Text>
+    </group>
+  )
+}
+
+function GraphLine({ start, end }: { start: [number, number, number], end: [number, number, number] }) {
+  return (
+    <Line points={[start, end]} color="rgba(255,255,255,0.2)" lineWidth={1} />
+  )
+}
+
+export default function KnowledgeGraph({ courseId }: { courseId?: string }) {
+  const [nodes, setNodes] = useState<NodeData[]>([])
+  const [links, setLinks] = useState<LinkData[]>([])
   const [isDoubtModalOpen, setIsDoubtModalOpen] = useState(false)
   const [doubtText, setDoubtText] = useState("")
 
-  const graphData = useMemo(() => ({
-    nodes: nodes.length > 0 ? nodes : [{ id: 'Empty', name: 'Start Contributing', val: 5, color: '#333' }],
-    links: links
-  }), [nodes, links])
+  useEffect(() => {
+    if (!courseId) {
+      setNodes([])
+      setLinks([])
+      return
+    }
+
+    fetch(`http://localhost:8000/api/graph/${courseId}`)
+      .then(res => res.json())
+      .then(data => {
+        const fetchedNodes = data.nodes || []
+        const fetchedLinks = data.links || []
+        
+        // Helper function to dynamically assign 3D coordinates using Fibonacci sphere
+        const positionedNodes = fetchedNodes.map((node: NodeData, i: number) => {
+          const phi = Math.acos(1 - 2 * (i + 0.5) / fetchedNodes.length);
+          const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+          const radius = 10;
+          
+          return {
+            ...node,
+            x: radius * Math.cos(theta) * Math.sin(phi),
+            y: radius * Math.sin(theta) * Math.sin(phi),
+            z: radius * Math.cos(phi)
+          }
+        })
+        
+        setNodes(positionedNodes)
+        setLinks(fetchedLinks)
+      })
+      .catch(err => console.error("Failed to fetch graph data", err))
+  }, [courseId])
+
+  const renderableLinks = useMemo(() => {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]))
+    return links.map((link, i) => {
+      const sourceNode = nodeMap.get(link.source)
+      const targetNode = nodeMap.get(link.target)
+      
+      if (sourceNode && targetNode && sourceNode.x !== undefined && targetNode.x !== undefined) {
+        return {
+          id: `${link.source}-${link.target}-${i}`,
+          start: [sourceNode.x, sourceNode.y, sourceNode.z] as [number, number, number],
+          end: [targetNode.x, targetNode.y, targetNode.z] as [number, number, number]
+        }
+      }
+      return null
+    }).filter(Boolean) as {id: string, start: [number, number, number], end: [number, number, number]}[]
+  }, [nodes, links])
 
   const handleSubmitDoubt = () => {
-    // Send to FastAPI /ask-doubt endpoint
     console.log("Submitting doubt to AI Judge:", doubtText)
     setIsDoubtModalOpen(false)
     setDoubtText("")
@@ -24,14 +109,12 @@ export default function KnowledgeGraph({ nodes = [], links = [] }: { nodes?: any
 
   return (
     <div className="w-full h-full flex flex-col relative bg-black/20 rounded-2xl border border-white/10 overflow-hidden backdrop-blur-sm">
-      
-      {/* Legend & Controls Overlay */}
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
         <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#06b6d4]"></span> Master Node</div>
-        <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span> Doubts</div>
+        <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#3b82f6]"></span> Note Chunk</div>
+        <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#a855f7]"></span> User</div>
       </div>
 
-      {/* Floating Doubt Button on the right bar */}
       <button 
         onClick={() => setIsDoubtModalOpen(true)}
         className="absolute bottom-6 right-6 z-20 flex items-center gap-2 bg-red-500/20 text-red-400 border border-red-500/50 px-4 py-2 rounded-full hover:bg-red-500/30 transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)]"
@@ -39,41 +122,43 @@ export default function KnowledgeGraph({ nodes = [], links = [] }: { nodes?: any
         <MessageCircleQuestion className="w-4 h-4" /> Ask Doubt
       </button>
 
-      {/* The 3D Canvas */}
       <div className="flex-1 w-full relative min-h-0">
-          <div className="absolute inset-0">
-             <ForceGraph3D
-                graphData={graphData}
-                backgroundColor="rgba(0,0,0,0)"
-                nodeLabel="name"
-                nodeColor="color"
-                nodeRelSize={6}
-                linkColor={() => 'rgba(255,255,255,0.2)'}
-                linkWidth={1.5}
-             />
-          </div>
+        <div className="absolute inset-0">
+          <Canvas camera={{ position: [0, 0, 25], fov: 60 }}>
+            <ambientLight intensity={0.5} />
+            <pointLight position={[10, 10, 10]} intensity={1} />
+            <OrbitControls enableDamping dampingFactor={0.05} />
+            
+            {nodes.map(node => (
+              <GraphNode key={node.id} node={node} />
+            ))}
+            
+            {renderableLinks.map(link => (
+              <GraphLine key={link.id} start={link.start} end={link.end} />
+            ))}
+          </Canvas>
+        </div>
       </div>
 
-      {/* Embedded Doubt Modal */}
       {isDoubtModalOpen && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
-              <div className="w-full max-w-md bg-[#0a0a0f] border border-red-500/30 p-5 rounded-xl shadow-2xl">
-                  <h3 className="text-lg font-bold text-red-400 mb-2">Submit a Doubt</h3>
-                  <p className="text-xs text-white/50 mb-4">
-                     AI Check: Irrelevant doubts cost a strike. 2 Strikes = 48-hour ban.
-                  </p>
-                  <textarea 
-                      className="w-full h-24 bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-red-500 outline-none resize-none mb-3"
-                      placeholder="e.g., Why does BCNF prevent update anomalies compared to 3NF?"
-                      value={doubtText}
-                      onChange={(e) => setDoubtText(e.target.value)}
-                  />
-                  <div className="flex justify-end gap-3">
-                      <button onClick={() => setIsDoubtModalOpen(false)} className="text-white/40 hover:text-white text-sm">Cancel</button>
-                      <button onClick={handleSubmitDoubt} className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-600">Analyze & Submit</button>
-                  </div>
-              </div>
-          </div>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+            <div className="w-full max-w-md bg-[#0a0a0f] border border-red-500/30 p-5 rounded-xl shadow-2xl">
+                <h3 className="text-lg font-bold text-red-400 mb-2">Submit a Doubt</h3>
+                <p className="text-xs text-white/50 mb-4">
+                   AI Check: Irrelevant doubts cost a strike. 2 Strikes = 48-hour ban.
+                </p>
+                <textarea 
+                    className="w-full h-24 bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-red-500 outline-none resize-none mb-3"
+                    placeholder="e.g., Why does BCNF prevent update anomalies compared to 3NF?"
+                    value={doubtText}
+                    onChange={(e) => setDoubtText(e.target.value)}
+                />
+                <div className="flex justify-end gap-3">
+                    <button onClick={() => setIsDoubtModalOpen(false)} className="text-white/40 hover:text-white text-sm">Cancel</button>
+                    <button onClick={handleSubmitDoubt} className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-600">Analyze & Submit</button>
+                </div>
+            </div>
+        </div>
       )}
     </div>
   )

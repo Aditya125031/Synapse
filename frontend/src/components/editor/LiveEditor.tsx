@@ -1,5 +1,6 @@
 "use client"
 
+import { forwardRef, useImperativeHandle } from 'react'
 import { sb } from '@/lib/supabase'
 import { useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -7,7 +8,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { FileUp, Type, Bold, Italic, List, Heading2, Send } from 'lucide-react'
 
-export default function LiveEditor() {
+const LiveEditor = forwardRef((props, ref) => {
     const [activeTab, setActiveTab] = useState<'type' | 'upload'>('type')
     const [isUploading, setIsUploading] = useState(false)
 
@@ -28,6 +29,21 @@ export default function LiveEditor() {
             },
         },
     })
+
+    useImperativeHandle(ref, () => ({
+        getText: () => editor?.getText() || "",
+        appendStitchedContent: (title: string, content: string) => {
+            if (!editor) return
+            const htmlToInsert = `
+                <div style="padding: 16px; border: 1px solid rgba(6, 182, 212, 0.3); background-color: rgba(6, 182, 212, 0.1); border-radius: 8px; margin: 16px 0;">
+                    <h4 style="color: #22d3ee; font-weight: bold; margin-bottom: 8px; margin-top: 0;">🧠 AI Stitch: ${title}</h4>
+                    <p style="color: rgba(255, 255, 255, 0.8); font-size: 14px; margin: 0;">${content}</p>
+                </div>
+                <p></p>
+            `
+            editor.commands.insertContent(htmlToInsert)
+        }
+    }), [editor])
 
     // Mock PDF Upload Handler
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,4 +207,8 @@ export default function LiveEditor() {
             </div>
         </div>
     )
-}
+})
+
+LiveEditor.displayName = "LiveEditor"
+
+export default LiveEditor

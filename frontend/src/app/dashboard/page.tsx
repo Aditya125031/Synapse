@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
-import { useState, useEffect } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, LogOut, X, Folder } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, LogOut, X, Folder, ChevronDown, Plus, Users, FileText } from 'lucide-react'
 import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
@@ -16,11 +16,110 @@ export default function Dashboard() {
     const [newChapterForm, setNewChapterForm] = useState({ name: '' })
     const [chapters, setChapters] = useState<{ id: string, name: string }[]>([])
 
+    // Class states
+    const [classes, setClasses] = useState<{ id: string, name: string, role: string }[]>([])
+    const [activeClassId, setActiveClassId] = useState<string | null>(null)
+    const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false)
+    const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false)
+    const [isJoinClassModalOpen, setIsJoinClassModalOpen] = useState(false)
+    const [newClassForm, setNewClassForm] = useState({ name: '', description: '' })
+    const [joinCode, setJoinCode] = useState("")
+
+    // Note states
+    const [isCreateNoteModalOpen, setIsCreateNoteModalOpen] = useState(false)
+    const [activeChapterId, setActiveChapterId] = useState<string | null>(null)
+    const [noteForm, setNoteForm] = useState({ title: '', content: '', mode: 'text' as 'text' | 'pdf' })
+    const [noteFile, setNoteFile] = useState<File | null>(null)
+    const [chapterNotes, setChapterNotes] = useState<{ id: string, title: string, user_id: string }[]>([])
+    
+    // LiveEditor ref
+    const editorRef = useRef<any>(null)
+
+    const handleStitch = async () => {
+        if (!editorRef.current) return;
+        const rawText = editorRef.current.getText();
+        if (!rawText.trim()) {
+            alert("Please type some notes first before stitching!");
+            return;
+        }
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const res = await fetch('http://localhost:8000/api/notes/stitch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ rawText })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const ghost_notes = data.ghost_notes || [];
+                ghost_notes.forEach((note: any) => {
+                    editorRef.current.appendStitchedContent(note.title, note.content);
+                });
+            } else {
+                console.error("Failed to stitch", await res.text());
+                alert("Failed to fetch ghost notes from API.");
+            }
+        } catch (err) {
+            console.error("Stitch error:", err);
+            alert("Could not connect to the stitch server.");
+        }
+    }
+
+    // Fetch user's classes on mount
     useEffect(() => {
+        const fetchClasses = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const { data, error } = await supabase
+                .from('class_members')
+                .select(`
+                    role,
+                    classes ( id, name )
+                `)
+                .eq('user_id', session.user.id);
+
+            if (error) {
+                console.error("Error fetching classes:", error);
+                return;
+            }
+
+            if (data) {
+                const formattedClasses = data.map((item: any) => ({
+                    id: item.classes.id,
+                    name: item.classes.name,
+                    role: item.role
+                }));
+                
+                setClasses(formattedClasses);
+                if (formattedClasses.length > 0 && !activeClassId) {
+                    setActiveClassId(formattedClasses[0].id);
+                }
+            }
+        };
+
+        fetchClasses();
+    }, []);
+
+    // Fetch courses filtered by active class
+    useEffect(() => {
+        if (!activeClassId) {
+            setCourses([]);
+            return;
+        }
+
         const fetchCourses = async () => {
             const { data, error } = await supabase
                 .from('courses')
-                .select('id, name');
+                .select('id, name')
+                .eq('class_id', activeClassId);
 
             if (error) {
                 console.error("Error fetching courses:", error);
@@ -29,15 +128,12 @@ export default function Dashboard() {
 
             if (data) {
                 setCourses(data);
-                // Auto-select the first course if it exists
-                if (data.length > 0 && !activeCourseId) {
-                    setActiveCourseId(data[0].id);
-                }
+                if (data.length > 0) setActiveCourseId(data[0].id);
             }
         };
 
         fetchCourses();
-    }, []); // Empty dependency array means this runs once on mount
+    }, [activeClassId]); // Re-runs whenever the user switches classes
 
     useEffect(() => {
         if (!activeCourseId) {
@@ -57,6 +153,26 @@ export default function Dashboard() {
 
         fetchChapters();
     }, [activeCourseId]); // Re-runs whenever the user clicks a different course
+
+    // Fetch notes for the active chapter
+    useEffect(() => {
+        if (!activeChapterId) {
+            setChapterNotes([]);
+            return;
+        }
+
+        const fetchNotes = async () => {
+            const { data, error } = await supabase
+                .from('notes')
+                .select('id, title, user_id')
+                .eq('chapter_id', activeChapterId)
+                .order('created_at', { ascending: false });
+            
+            if (data) setChapterNotes(data);
+        };
+
+        fetchNotes();
+    }, [activeChapterId]); // Re-runs whenever the user clicks a different chapter
 
     const handleCreateCourse = async () => {
         try {
@@ -130,17 +246,173 @@ export default function Dashboard() {
         }
     };
 
+    const handleCreateClass = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch("http://localhost:8000/api/classes/create", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session?.access_token}`
+                },
+                body: JSON.stringify(newClassForm)
+            });
+
+            if (res.ok) {
+                setIsCreateClassModalOpen(false);
+                window.location.reload();
+            } else {
+                const err = await res.json();
+                alert(err.detail);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleJoinClass = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch("http://localhost:8000/api/classes/join", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session?.access_token}`
+                },
+                body: JSON.stringify({ join_code: joinCode })
+            });
+
+            if (res.ok) {
+                setIsJoinClassModalOpen(false);
+                window.location.reload();
+            } else {
+                const err = await res.json();
+                alert(err.detail);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleCreateNote = async () => {
+        if (!activeChapterId) return alert("Select a chapter first.");
+        if (!noteForm.title) return alert("Please provide a topic name.");
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return alert("You must be logged in!");
+
+            let res;
+            
+            // IF TEXT MODE
+            if (noteForm.mode === 'text') {
+                res = await fetch("http://localhost:8000/api/notes/sync", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${session.access_token}`
+                    },
+                    body: JSON.stringify({
+                        chapter_id: activeChapterId,
+                        title: noteForm.title,
+                        content: noteForm.content
+                    })
+                });
+            } 
+            // IF PDF MODE
+            else {
+                if (!noteFile) return alert("Please select a PDF file.");
+                const formData = new FormData();
+                formData.append("file", noteFile);
+                formData.append("chapter_id", activeChapterId);
+                formData.append("title", noteForm.title);
+
+                res = await fetch("http://localhost:8000/api/notes/upload-pdf", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${session.access_token}` },
+                    body: formData
+                });
+            }
+
+            if (res.ok) {
+                setIsCreateNoteModalOpen(false);
+                setNoteForm({ title: '', content: '', mode: 'text' });
+                setNoteFile(null);
+                alert("Note successfully embedded into the Hive!");
+            } else {
+                const err = await res.json();
+                alert(err.detail);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     return (
         <div className="h-screen w-full bg-[#050508] text-white flex overflow-hidden font-sans">
 
             {/* LEFT SIDEBAR */}
             <aside className="w-72 border-r border-white/10 bg-[#050508] flex flex-col h-full relative z-20">
-                {/* Brand */}
-                <div className="h-16 shrink-0 flex items-center px-6 border-b border-white/10">
-                    <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-[pulse_2s_ease-in-out_infinite] shadow-[0_0_12px_rgba(34,211,238,0.6)] mr-3"></div>
-                    <h2 className="text-xl font-bold tracking-wide bg-gradient-to-r from-white to-white/50 text-transparent bg-clip-text">
-                        Synapse
-                    </h2>
+                {/* Class Switcher Header */}
+                <div className="h-16 shrink-0 relative border-b border-white/10 flex items-center px-4">
+                    <button 
+                        onClick={() => setIsClassDropdownOpen(!isClassDropdownOpen)}
+                        className="w-full flex items-center justify-between hover:bg-white/5 p-2 rounded-xl transition-colors"
+                    >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shrink-0">
+                                <span className="text-white font-bold text-sm">
+                                    {classes.find(c => c.id === activeClassId)?.name?.charAt(0) || "S"}
+                                </span>
+                            </div>
+                            <div className="flex flex-col items-start truncate">
+                                <span className="text-sm font-bold text-white truncate">
+                                    {classes.find(c => c.id === activeClassId)?.name || "Select a Class"}
+                                </span>
+                                <span className="text-[10px] text-white/50 uppercase tracking-widest">
+                                    {classes.find(c => c.id === activeClassId)?.role || "Workspace"}
+                                </span>
+                            </div>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${isClassDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isClassDropdownOpen && (
+                        <div className="absolute top-16 left-4 right-4 bg-[#0a0a0f] border border-white/10 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
+                            <div className="px-3 pb-2 mb-2 border-b border-white/10">
+                                <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Your Classes</p>
+                            </div>
+                            
+                            <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                                {classes.map(c => (
+                                    <button 
+                                        key={c.id}
+                                        onClick={() => { setActiveClassId(c.id); setIsClassDropdownOpen(false); }}
+                                        className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 text-left"
+                                    >
+                                        <div className={`w-2 h-2 rounded-full ${activeClassId === c.id ? 'bg-cyan-400' : 'bg-transparent'}`} />
+                                        <span className={`text-sm ${activeClassId === c.id ? 'text-white' : 'text-white/70'}`}>{c.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="px-2 pt-2 mt-2 border-t border-white/10 space-y-1">
+                                <button 
+                                    onClick={() => { setIsJoinClassModalOpen(true); setIsClassDropdownOpen(false); }}
+                                    className="w-full flex items-center gap-2 px-2 py-2 text-sm text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                                >
+                                    <Users className="w-4 h-4" /> Join Class
+                                </button>
+                                <button 
+                                    onClick={() => { setIsCreateClassModalOpen(true); setIsClassDropdownOpen(false); }}
+                                    className="w-full flex items-center gap-2 px-2 py-2 text-sm text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
+                                >
+                                    <Plus className="w-4 h-4" /> Create Class
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Course Navigation */}
@@ -192,9 +464,47 @@ export default function Dashboard() {
                                                 <p className="text-xs text-white/30 px-2">No chapters proposed yet.</p>
                                             ) : (
                                                 chapters.map(chapter => (
-                                                    <button key={chapter.id} className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 mb-1 hover:bg-indigo-500/20 transition-colors">
-                                                        <span className="flex items-center gap-2 truncate"><Hash className="w-3 h-3 shrink-0" /> {chapter.name}</span>
-                                                    </button>
+                                                    <div key={chapter.id} className="mb-1">
+                                                        <button 
+                                                            onClick={() => setActiveChapterId(chapter.id)} 
+                                                            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                                                activeChapterId === chapter.id 
+                                                                    ? "bg-indigo-500/30 text-white border border-indigo-500/50" 
+                                                                    : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"
+                                                            }`}
+                                                        >
+                                                            <span className="flex items-center gap-2 truncate"><Hash className="w-3 h-3 shrink-0" /> {chapter.name}</span>
+                                                        </button>
+                                                        {/* Show Add Note Button and Note List ONLY if this chapter is selected */}
+                                                        {activeChapterId === chapter.id && (
+                                                            <div className="mt-2 space-y-1 pl-3 border-l-2 border-white/5 ml-2">
+                                                                
+                                                                {/* The Contribution Button */}
+                                                                <button 
+                                                                    onClick={() => setIsCreateNoteModalOpen(true)}
+                                                                    className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all mb-2 shadow-[0_0_10px_rgba(16,185,129,0.05)]"
+                                                                >
+                                                                    + Contribute Note
+                                                                </button>
+
+                                                                {/* The Mapped Notes */}
+                                                                {chapterNotes.length === 0 ? (
+                                                                    <p className="text-[10px] text-white/30 px-2 italic py-1">No notes in the hive yet.</p>
+                                                                ) : (
+                                                                    chapterNotes.map(note => (
+                                                                        <button 
+                                                                            key={note.id}
+                                                                            onClick={() => console.log("Load Note into Graph:", note.id)} 
+                                                                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs bg-white/[0.02] hover:bg-white/10 text-white/60 hover:text-white border border-transparent hover:border-white/10 transition-all text-left group"
+                                                                        >
+                                                                            <FileText className="w-3.5 h-3.5 text-emerald-500/70 group-hover:text-emerald-400 shrink-0" />
+                                                                            <span className="truncate">{note.title}</span>
+                                                                        </button>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ))
                                             )}
                                         </div>
@@ -259,13 +569,21 @@ export default function Dashboard() {
                 <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden min-h-0">
 
                     {/* LEFT: Editor Panel */}
-                    <div className="h-full">
-                        <LiveEditor />
+                    <div className="h-full flex flex-col gap-4">
+                        <div className="flex justify-between items-center bg-black/20 p-4 rounded-xl border border-white/10">
+                            <h2 className="text-white/80 font-medium flex items-center gap-2"><CloudLightning className="w-5 h-5 text-cyan-400"/> AI Live Editor</h2>
+                            <button onClick={handleStitch} className="flex items-center gap-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-[0_0_15px_rgba(99,102,241,0.2)]">
+                                <CloudLightning className="w-4 h-4" /> AI Stitch
+                            </button>
+                        </div>
+                        <div className="flex-1 min-h-0">
+                            <LiveEditor ref={editorRef} />
+                        </div>
                     </div>
 
                     {/* RIGHT: Graph Panel */}
                     <div className="h-full">
-                        <KnowledgeGraph />
+                        <KnowledgeGraph courseId={activeCourseId || ""} />
                     </div>
 
                 </div>
@@ -317,6 +635,104 @@ export default function Dashboard() {
                             className="w-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 py-2 rounded-lg hover:bg-indigo-500/30 transition-colors"
                         >
                             Submit (1 per 14 Days)
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Class Modal */}
+            {isCreateClassModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-cyan-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(34,211,238,0.1)]">
+                        <button onClick={() => setIsCreateClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
+                        <h3 className="text-xl font-bold mb-4 text-cyan-400">Create New Class</h3>
+                        <input 
+                            type="text" placeholder="Class Name (e.g., CS Section A)" 
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white focus:border-cyan-500 outline-none"
+                            value={newClassForm.name} onChange={e => setNewClassForm({...newClassForm, name: e.target.value})}
+                        />
+                        <textarea 
+                            placeholder="Description (Optional)" 
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white focus:border-cyan-500 outline-none resize-none h-20"
+                            value={newClassForm.description} onChange={e => setNewClassForm({...newClassForm, description: e.target.value})}
+                        />
+                        <button onClick={handleCreateClass} className="w-full bg-cyan-500 text-white font-medium py-2 rounded-lg hover:bg-cyan-600 transition-colors">
+                            Create & Generate Code
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Join Class Modal */}
+            {isJoinClassModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-indigo-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(99,102,241,0.1)]">
+                        <button onClick={() => setIsJoinClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
+                        <h3 className="text-xl font-bold mb-4 text-indigo-400">Join a Class</h3>
+                        <p className="text-sm text-white/50 mb-4">Enter the 6-character invite code provided by your instructor.</p>
+                        <input 
+                            type="text" placeholder="e.g., SYN-A1B2" 
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-center text-lg tracking-widest uppercase text-white focus:border-indigo-500 outline-none mb-4 font-mono"
+                            value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                        />
+                        <button onClick={handleJoinClass} className="w-full bg-indigo-500 text-white font-medium py-2 rounded-lg hover:bg-indigo-600 transition-colors">
+                            Join Class
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Note Modal */}
+            {isCreateNoteModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-[#0a0a0f] border border-emerald-500/30 p-6 rounded-2xl w-full max-w-lg relative shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+                        <button onClick={() => setIsCreateNoteModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
+                        <h3 className="text-xl font-bold mb-1 text-emerald-400">Contribute to the Hive</h3>
+                        <p className="text-xs text-white/50 mb-5">Your node will be linked to your profile so peers can collaborate with you.</p>
+                        
+                        <input 
+                            type="text" placeholder="Topic Name (e.g., Boyce-Codd Normal Form)" 
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-3 mb-4 text-white focus:border-emerald-500 outline-none"
+                            value={noteForm.title} onChange={e => setNoteForm({...noteForm, title: e.target.value})}
+                        />
+
+                        {/* Toggle Mode */}
+                        <div className="flex bg-white/5 rounded-lg p-1 mb-4 border border-white/10">
+                            <button 
+                                onClick={() => setNoteForm({...noteForm, mode: 'text'})}
+                                className={`flex-1 py-1.5 text-sm rounded-md transition-all ${noteForm.mode === 'text' ? 'bg-emerald-500/20 text-emerald-400' : 'text-white/50 hover:text-white'}`}
+                            >
+                                Write Note
+                            </button>
+                            <button 
+                                onClick={() => setNoteForm({...noteForm, mode: 'pdf'})}
+                                className={`flex-1 py-1.5 text-sm rounded-md transition-all ${noteForm.mode === 'pdf' ? 'bg-emerald-500/20 text-emerald-400' : 'text-white/50 hover:text-white'}`}
+                            >
+                                Upload PDF
+                            </button>
+                        </div>
+
+                        {/* Conditional Input Area */}
+                        {noteForm.mode === 'text' ? (
+                            <textarea 
+                                placeholder="Type or paste your markdown notes here..." 
+                                className="w-full h-40 bg-white/5 border border-white/10 rounded-lg p-3 mb-4 text-sm text-white focus:border-emerald-500 outline-none resize-none custom-scrollbar"
+                                value={noteForm.content} onChange={e => setNoteForm({...noteForm, content: e.target.value})}
+                            />
+                        ) : (
+                            <div className="w-full h-40 bg-white/5 border border-dashed border-white/20 rounded-lg flex flex-col items-center justify-center mb-4 relative hover:bg-white/10 transition-colors">
+                                <input 
+                                    type="file" accept="application/pdf"
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    onChange={e => setNoteFile(e.target.files?.[0] || null)}
+                                />
+                                <span className="text-emerald-400 mb-2">📄 Select PDF</span>
+                                <span className="text-xs text-white/40">{noteFile ? noteFile.name : "Click or drag to upload"}</span>
+                            </div>
+                        )}
+
+                        <button onClick={handleCreateNote} className="w-full bg-emerald-500 text-white font-medium py-2 rounded-lg hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2">
+                            <CloudLightning className="w-4 h-4" /> Vectorize & Sync
                         </button>
                     </div>
                 </div>
