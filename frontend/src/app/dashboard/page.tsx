@@ -31,7 +31,7 @@ export default function Dashboard() {
     const [noteForm, setNoteForm] = useState({ title: '', content: '', mode: 'text' as 'text' | 'pdf' })
     const [noteFile, setNoteFile] = useState<File | null>(null)
     const [chapterNotes, setChapterNotes] = useState<{ id: string, title: string, user_id: string }[]>([])
-    
+
     // LiveEditor ref
     const editorRef = useRef<any>(null)
 
@@ -97,7 +97,7 @@ export default function Dashboard() {
                     name: item.classes.name,
                     role: item.role
                 }));
-                
+
                 setClasses(formattedClasses);
                 if (formattedClasses.length > 0 && !activeClassId) {
                     setActiveClassId(formattedClasses[0].id);
@@ -147,7 +147,7 @@ export default function Dashboard() {
                 .select('id, name')
                 .eq('course_id', activeCourseId)
                 .order('created_at', { ascending: true });
-            
+
             if (data) setChapters(data);
         };
 
@@ -167,7 +167,7 @@ export default function Dashboard() {
                 .select('id, title, user_id')
                 .eq('chapter_id', activeChapterId)
                 .order('created_at', { ascending: false });
-            
+
             if (data) setChapterNotes(data);
         };
 
@@ -303,7 +303,7 @@ export default function Dashboard() {
             if (!session) return alert("You must be logged in!");
 
             let res;
-            
+
             // IF TEXT MODE
             if (noteForm.mode === 'text') {
                 res = await fetch("http://localhost:8000/api/notes/sync", {
@@ -318,14 +318,18 @@ export default function Dashboard() {
                         content: noteForm.content
                     })
                 });
-            } 
+            }
             // IF PDF MODE
             else {
                 if (!noteFile) return alert("Please select a PDF file.");
                 const formData = new FormData();
-                formData.append("file", noteFile);
+
+                // 1. Append text fields FIRST
                 formData.append("chapter_id", activeChapterId);
                 formData.append("title", noteForm.title);
+
+                // 2. Append the file LAST
+                formData.append("file", noteFile);
 
                 res = await fetch("http://localhost:8000/api/notes/upload-pdf", {
                     method: "POST",
@@ -355,7 +359,7 @@ export default function Dashboard() {
             <aside className="w-72 border-r border-white/10 bg-[#050508] flex flex-col h-full relative z-20">
                 {/* Class Switcher Header */}
                 <div className="h-16 shrink-0 relative border-b border-white/10 flex items-center px-4">
-                    <button 
+                    <button
                         onClick={() => setIsClassDropdownOpen(!isClassDropdownOpen)}
                         className="w-full flex items-center justify-between hover:bg-white/5 p-2 rounded-xl transition-colors"
                     >
@@ -383,10 +387,10 @@ export default function Dashboard() {
                             <div className="px-3 pb-2 mb-2 border-b border-white/10">
                                 <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Your Classes</p>
                             </div>
-                            
+
                             <div className="max-h-48 overflow-y-auto custom-scrollbar">
                                 {classes.map(c => (
-                                    <button 
+                                    <button
                                         key={c.id}
                                         onClick={() => { setActiveClassId(c.id); setIsClassDropdownOpen(false); }}
                                         className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 text-left"
@@ -398,13 +402,13 @@ export default function Dashboard() {
                             </div>
 
                             <div className="px-2 pt-2 mt-2 border-t border-white/10 space-y-1">
-                                <button 
+                                <button
                                     onClick={() => { setIsJoinClassModalOpen(true); setIsClassDropdownOpen(false); }}
                                     className="w-full flex items-center gap-2 px-2 py-2 text-sm text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
                                 >
                                     <Users className="w-4 h-4" /> Join Class
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => { setIsCreateClassModalOpen(true); setIsClassDropdownOpen(false); }}
                                     className="w-full flex items-center gap-2 px-2 py-2 text-sm text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
                                 >
@@ -436,11 +440,10 @@ export default function Dashboard() {
                                     {/* Course Header Button */}
                                     <button
                                         onClick={() => setActiveCourseId(course.id)}
-                                        className={`w-full flex items-center justify-between px-4 py-2 mx-2 rounded-lg text-sm transition-all ${
-                                            activeCourseId === course.id 
-                                                ? "bg-white/10 text-white" 
-                                                : "text-white/60 hover:bg-white/5 hover:text-white"
-                                        }`}
+                                        className={`w-full flex items-center justify-between px-4 py-2 mx-2 rounded-lg text-sm transition-all ${activeCourseId === course.id
+                                            ? "bg-white/10 text-white"
+                                            : "text-white/60 hover:bg-white/5 hover:text-white"
+                                            }`}
                                     >
                                         <span className="flex items-center gap-3 truncate">
                                             <BookOpen className={`w-4 h-4 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} />
@@ -465,22 +468,21 @@ export default function Dashboard() {
                                             ) : (
                                                 chapters.map(chapter => (
                                                     <div key={chapter.id} className="mb-1">
-                                                        <button 
-                                                            onClick={() => setActiveChapterId(chapter.id)} 
-                                                            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                                                                activeChapterId === chapter.id 
-                                                                    ? "bg-indigo-500/30 text-white border border-indigo-500/50" 
-                                                                    : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"
-                                                            }`}
+                                                        <button
+                                                            onClick={() => setActiveChapterId(chapter.id)}
+                                                            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${activeChapterId === chapter.id
+                                                                ? "bg-indigo-500/30 text-white border border-indigo-500/50"
+                                                                : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"
+                                                                }`}
                                                         >
                                                             <span className="flex items-center gap-2 truncate"><Hash className="w-3 h-3 shrink-0" /> {chapter.name}</span>
                                                         </button>
                                                         {/* Show Add Note Button and Note List ONLY if this chapter is selected */}
                                                         {activeChapterId === chapter.id && (
                                                             <div className="mt-2 space-y-1 pl-3 border-l-2 border-white/5 ml-2">
-                                                                
+
                                                                 {/* The Contribution Button */}
-                                                                <button 
+                                                                <button
                                                                     onClick={() => setIsCreateNoteModalOpen(true)}
                                                                     className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all mb-2 shadow-[0_0_10px_rgba(16,185,129,0.05)]"
                                                                 >
@@ -492,9 +494,9 @@ export default function Dashboard() {
                                                                     <p className="text-[10px] text-white/30 px-2 italic py-1">No notes in the hive yet.</p>
                                                                 ) : (
                                                                     chapterNotes.map(note => (
-                                                                        <button 
+                                                                        <button
                                                                             key={note.id}
-                                                                            onClick={() => console.log("Load Note into Graph:", note.id)} 
+                                                                            onClick={() => console.log("Load Note into Graph:", note.id)}
                                                                             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs bg-white/[0.02] hover:bg-white/10 text-white/60 hover:text-white border border-transparent hover:border-white/10 transition-all text-left group"
                                                                         >
                                                                             <FileText className="w-3.5 h-3.5 text-emerald-500/70 group-hover:text-emerald-400 shrink-0" />
@@ -571,7 +573,7 @@ export default function Dashboard() {
                     {/* LEFT: Editor Panel */}
                     <div className="h-full flex flex-col gap-4">
                         <div className="flex justify-between items-center bg-black/20 p-4 rounded-xl border border-white/10">
-                            <h2 className="text-white/80 font-medium flex items-center gap-2"><CloudLightning className="w-5 h-5 text-cyan-400"/> AI Live Editor</h2>
+                            <h2 className="text-white/80 font-medium flex items-center gap-2"><CloudLightning className="w-5 h-5 text-cyan-400" /> AI Live Editor</h2>
                             <button onClick={handleStitch} className="flex items-center gap-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-[0_0_15px_rgba(99,102,241,0.2)]">
                                 <CloudLightning className="w-4 h-4" /> AI Stitch
                             </button>
@@ -646,15 +648,15 @@ export default function Dashboard() {
                     <div className="bg-[#0a0a0f] border border-cyan-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(34,211,238,0.1)]">
                         <button onClick={() => setIsCreateClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
                         <h3 className="text-xl font-bold mb-4 text-cyan-400">Create New Class</h3>
-                        <input 
-                            type="text" placeholder="Class Name (e.g., CS Section A)" 
+                        <input
+                            type="text" placeholder="Class Name (e.g., CS Section A)"
                             className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white focus:border-cyan-500 outline-none"
-                            value={newClassForm.name} onChange={e => setNewClassForm({...newClassForm, name: e.target.value})}
+                            value={newClassForm.name} onChange={e => setNewClassForm({ ...newClassForm, name: e.target.value })}
                         />
-                        <textarea 
-                            placeholder="Description (Optional)" 
+                        <textarea
+                            placeholder="Description (Optional)"
                             className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white focus:border-cyan-500 outline-none resize-none h-20"
-                            value={newClassForm.description} onChange={e => setNewClassForm({...newClassForm, description: e.target.value})}
+                            value={newClassForm.description} onChange={e => setNewClassForm({ ...newClassForm, description: e.target.value })}
                         />
                         <button onClick={handleCreateClass} className="w-full bg-cyan-500 text-white font-medium py-2 rounded-lg hover:bg-cyan-600 transition-colors">
                             Create & Generate Code
@@ -670,8 +672,8 @@ export default function Dashboard() {
                         <button onClick={() => setIsJoinClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
                         <h3 className="text-xl font-bold mb-4 text-indigo-400">Join a Class</h3>
                         <p className="text-sm text-white/50 mb-4">Enter the 6-character invite code provided by your instructor.</p>
-                        <input 
-                            type="text" placeholder="e.g., SYN-A1B2" 
+                        <input
+                            type="text" placeholder="e.g., SYN-A1B2"
                             className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-center text-lg tracking-widest uppercase text-white focus:border-indigo-500 outline-none mb-4 font-mono"
                             value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())}
                         />
@@ -689,23 +691,23 @@ export default function Dashboard() {
                         <button onClick={() => setIsCreateNoteModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">✕</button>
                         <h3 className="text-xl font-bold mb-1 text-emerald-400">Contribute to the Hive</h3>
                         <p className="text-xs text-white/50 mb-5">Your node will be linked to your profile so peers can collaborate with you.</p>
-                        
-                        <input 
-                            type="text" placeholder="Topic Name (e.g., Boyce-Codd Normal Form)" 
+
+                        <input
+                            type="text" placeholder="Topic Name (e.g., Boyce-Codd Normal Form)"
                             className="w-full bg-white/5 border border-white/10 rounded-lg p-3 mb-4 text-white focus:border-emerald-500 outline-none"
-                            value={noteForm.title} onChange={e => setNoteForm({...noteForm, title: e.target.value})}
+                            value={noteForm.title} onChange={e => setNoteForm({ ...noteForm, title: e.target.value })}
                         />
 
                         {/* Toggle Mode */}
                         <div className="flex bg-white/5 rounded-lg p-1 mb-4 border border-white/10">
-                            <button 
-                                onClick={() => setNoteForm({...noteForm, mode: 'text'})}
+                            <button
+                                onClick={() => setNoteForm({ ...noteForm, mode: 'text' })}
                                 className={`flex-1 py-1.5 text-sm rounded-md transition-all ${noteForm.mode === 'text' ? 'bg-emerald-500/20 text-emerald-400' : 'text-white/50 hover:text-white'}`}
                             >
                                 Write Note
                             </button>
-                            <button 
-                                onClick={() => setNoteForm({...noteForm, mode: 'pdf'})}
+                            <button
+                                onClick={() => setNoteForm({ ...noteForm, mode: 'pdf' })}
                                 className={`flex-1 py-1.5 text-sm rounded-md transition-all ${noteForm.mode === 'pdf' ? 'bg-emerald-500/20 text-emerald-400' : 'text-white/50 hover:text-white'}`}
                             >
                                 Upload PDF
@@ -714,14 +716,14 @@ export default function Dashboard() {
 
                         {/* Conditional Input Area */}
                         {noteForm.mode === 'text' ? (
-                            <textarea 
-                                placeholder="Type or paste your markdown notes here..." 
+                            <textarea
+                                placeholder="Type or paste your markdown notes here..."
                                 className="w-full h-40 bg-white/5 border border-white/10 rounded-lg p-3 mb-4 text-sm text-white focus:border-emerald-500 outline-none resize-none custom-scrollbar"
-                                value={noteForm.content} onChange={e => setNoteForm({...noteForm, content: e.target.value})}
+                                value={noteForm.content} onChange={e => setNoteForm({ ...noteForm, content: e.target.value })}
                             />
                         ) : (
                             <div className="w-full h-40 bg-white/5 border border-dashed border-white/20 rounded-lg flex flex-col items-center justify-center mb-4 relative hover:bg-white/10 transition-colors">
-                                <input 
+                                <input
                                     type="file" accept="application/pdf"
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                     onChange={e => setNoteFile(e.target.files?.[0] || null)}

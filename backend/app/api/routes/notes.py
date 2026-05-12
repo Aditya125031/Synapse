@@ -9,6 +9,7 @@ import google.generativeai as genai
 from app.api.dependencies import get_current_user
 from datetime import datetime, timezone
 from app.db.vector_service import save_pdf_chunks
+from typing import Annotated
 
 load_dotenv()
 router = APIRouter()
@@ -71,9 +72,11 @@ async def sync_to_hive(req: SyncRequest, current_user: dict = Depends(get_curren
 
 @router.post("/upload-pdf")
 async def process_pdf(
-    file: UploadFile = File(...),
-    chapter_id: str = Form(...),
-    title: str = Form(...), # <-- New Topic Name field from Form
+    # Text forms first
+    chapter_id: Annotated[str, Form(...)],
+    title: Annotated[str, Form(...)],
+    # File last
+    file: Annotated[UploadFile, File(...)],
     current_user: dict = Depends(get_current_user)
 ):
     try:
