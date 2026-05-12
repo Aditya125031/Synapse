@@ -324,11 +324,10 @@ export default function Dashboard() {
                 if (!noteFile) return alert("Please select a PDF file.");
                 const formData = new FormData();
 
-                // 1. Append text fields FIRST
+                // TEXT FIELDS FIRST!
                 formData.append("chapter_id", activeChapterId);
                 formData.append("title", noteForm.title);
-
-                // 2. Append the file LAST
+                // FILE LAST!
                 formData.append("file", noteFile);
 
                 res = await fetch("http://localhost:8000/api/notes/upload-pdf", {

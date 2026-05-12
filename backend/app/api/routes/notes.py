@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 import io
 from pypdf import PdfReader
 from pydantic import BaseModel
@@ -72,14 +72,31 @@ async def sync_to_hive(req: SyncRequest, current_user: dict = Depends(get_curren
 
 @router.post("/upload-pdf")
 async def process_pdf(
-    # Text forms first
-    chapter_id: Annotated[str, Form(...)],
-    title: Annotated[str, Form(...)],
-    # File last
-    file: Annotated[UploadFile, File(...)],
+    request: Request,
     current_user: dict = Depends(get_current_user)
 ):
+    # --- ADD THESE 3 LINES ---
+    print("\n--- INCOMING REQUEST DEBUG ---")
+    print("HEADERS:", request.headers.get("content-type"))
+    form_data = await request.form()
+    print("FORM KEYS RECEIVED:", form_data.keys())
+    print("----------------------------\n")
     try:
+        # 1. Manually parse the multipart form data
+        form_data = await request.form()
+        
+        chapter_id = form_data.get("chapter_id")
+        title = form_data.get("title")
+        file = form_data.get("file")
+
+        # 2. Manual Validation (replaces the 422 error with a clear 400 error)
+        if not chapter_id or not title:
+            raise HTTPException(status_code=400, detail=f"Missing text fields. chapter_id: {chapter_id}, title: {title}")
+        if not file or not hasattr(file, "read"):
+            raise HTTPException(status_code=400, detail="Missing or invalid PDF file.")
+
+        # --- The rest of your exact same logic starts here ---
+        
         # Rate Limit Check (5 Days)
         recent_note = supabase.table("notes").select("created_at").eq("user_id", current_user["user_id"]).eq("chapter_id", chapter_id).order("created_at", desc=True).limit(1).execute()
         if len(recent_note.data) > 0:
@@ -88,7 +105,7 @@ async def process_pdf(
             if days_since < 5:
                 raise HTTPException(status_code=429, detail=f"Rate Limit: Try again in {5 - days_since} days.")
 
-        # 1. Create the Parent Note
+        # Create the Parent Note
         note_res = supabase.table("notes").insert({
             "chapter_id": chapter_id,
             "user_id": current_user["user_id"],
@@ -96,7 +113,7 @@ async def process_pdf(
         }).execute()
         note_id = note_res.data[0]["id"]
 
-        # 2. Extract and sanitize PDF text
+        # Extract and sanitize PDF text
         contents = await file.read()
         pdf = PdfReader(io.BytesIO(contents))
         full_text = "".join([page.extract_text().replace('\x00', '') + "\n" for page in pdf.pages if page.extract_text()])
@@ -106,7 +123,7 @@ async def process_pdf(
         if not chunks:
             return {"status": "error", "message": "No readable text found in PDF."}
 
-        # 3. Batch embed
+        # Batch embed
         result = genai.embed_content(
             model="models/gemini-embedding-001",
             content=chunks,
@@ -114,7 +131,7 @@ async def process_pdf(
             output_dimensionality=768
         )
         
-        # 4. Save all chunks linked to the parent note (and create Neo4j relationships)
+        # Save all chunks
         save_pdf_chunks(
             supabase=supabase,
             chunks=chunks,
