@@ -69,6 +69,7 @@ def restore_supabase():
             class_id UUID REFERENCES public.classes(id) ON DELETE CASCADE,
             user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
             role TEXT DEFAULT 'student',
+            status TEXT DEFAULT 'approved',
             created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
             UNIQUE(class_id, user_id)
         );
