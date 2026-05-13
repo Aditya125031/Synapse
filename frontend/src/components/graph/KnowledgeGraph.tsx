@@ -14,9 +14,9 @@ interface NodeData {
   x?: number
   y?: number
   z?: number
-  full_name?: string
   avatar_url?: string
   title?: string
+  content?: string
 }
 
 interface LinkData {
@@ -30,48 +30,60 @@ interface LinkData {
 function GraphNode({ node, onClick, onAskDoubt }: { node: NodeData, onClick?: (node: NodeData) => void, onAskDoubt?: () => void }) {
   const color = node.type === 'master' ? '#06b6d4' : node.type === 'user' ? '#a855f7' : node.type === 'ghost' ? '#f59e0b' : '#3b82f6'
   const size = node.type === 'master' ? 0.8 : node.type === 'user' ? 0.6 : node.type === 'ghost' ? 0.5 : 0.4
-  const [hovered, setHovered] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const [isClicked, setIsClicked] = useState(false)
   
   return (
-    <group 
-      position={[node.x || 0, node.y || 0, node.z || 0]} 
-      onClick={(e) => { 
-        e.stopPropagation(); 
-        if (node.type === 'user') setMenuOpen(!menuOpen);
-        else if (onClick) onClick(node); 
-      }} 
-      onPointerOver={(e) => { 
-        e.stopPropagation();
-        setHovered(true);
-        if (node.type === 'master') document.body.style.cursor = 'pointer'; 
-      }} 
-      onPointerOut={() => {
-        setHovered(false);
-        document.body.style.cursor = 'auto';
-      }}>
-      <Sphere args={[size, 16, 16]}>
-        <meshStandardMaterial color={color} />
-      </Sphere>
-      {node.type === 'user' ? (
-        <Html position={[0, size + 0.3, 0]} center zIndexRange={[100, 0]}>
-          <div className="group relative flex flex-col items-center cursor-pointer">
-            <div className="bg-purple-500/20 text-purple-200 border border-purple-500/50 px-2 py-0.5 rounded text-[10px] whitespace-nowrap backdrop-blur-sm pointer-events-auto">
-              {node.full_name || "Unknown User"}
+    <group position={[node.x || 0, node.y || 0, node.z || 0]}>
+      <mesh
+        onClick={(e) => { 
+          e.stopPropagation(); 
+          setIsClicked(!isClicked);
+          if (node.type !== 'user' && onClick) onClick(node); 
+        }}
+        onPointerOver={(e) => { 
+          e.stopPropagation();
+          setIsHovered(true);
+          if (node.type === 'master') document.body.style.cursor = 'pointer'; 
+        }} 
+        onPointerOut={(e) => {
+          setIsHovered(false);
+          document.body.style.cursor = 'auto';
+        }}
+      >
+        <sphereGeometry args={[size, 16, 16]} />
+        <meshStandardMaterial 
+          color={color} 
+          transparent={node.type === 'ghost'} 
+          opacity={node.type === 'ghost' ? 0.6 : 1} 
+        />
+        
+        <Html center zIndexRange={[100, 0]}>
+          <div className="relative flex flex-col items-center">
+            {/* Label */}
+            <div className="absolute top-4 bg-black/50 text-white border border-white/20 px-2 py-0.5 rounded text-[10px] whitespace-nowrap backdrop-blur-sm pointer-events-none">
+              {node.type === 'user' ? (node.full_name || "Unknown User") : (node.title || node.type)}
             </div>
-            {/* Hover Tooltip */}
-            <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-none w-32 z-50">
-              {node.avatar_url ? (
-                <img src={node.avatar_url} alt="avatar" className="w-8 h-8 rounded-full mb-1 object-cover" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-purple-500/50 mb-1 flex items-center justify-center text-xs font-bold text-white">?</div>
-              )}
-              <span className="text-white text-xs text-center font-bold truncate w-full">{node.full_name || "Unknown"}</span>
-              <span className="text-white/40 text-[9px] text-center font-mono truncate w-full">{node.id.slice(0, 8)}...</span>
-            </div>
-            {/* User Menu Modal */}
-            {menuOpen && (
-              <div className="absolute top-full mt-2 flex flex-col items-center bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-auto w-32 z-50">
+            
+            {/* Hover Menu (Notes) */}
+            {isHovered && node.type === 'note' && (
+               <div className="absolute bottom-full mb-2 flex flex-col gap-1 bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-auto w-24">
+                 <button onClick={(e) => { e.stopPropagation(); alert("Downloading note..."); }} className="w-full text-left px-2 py-1 text-[10px] text-white/80 hover:text-white hover:bg-white/10 rounded">Download</button>
+                 <button onClick={(e) => { e.stopPropagation(); if(onAskDoubt) onAskDoubt(); }} className="w-full text-left px-2 py-1 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded">Ask Doubt</button>
+               </div>
+            )}
+            
+            {/* Hover Menu (Ghost Notes) */}
+            {isHovered && node.type === 'ghost' && (
+               <div className="absolute bottom-full mb-2 bg-amber-500/10 border border-amber-500/30 p-2 rounded-lg shadow-xl pointer-events-auto w-48 text-amber-200 text-[10px] text-center backdrop-blur-md">
+                 {node.content || "Missing concept"}
+               </div>
+            )}
+            
+            {/* Click Menu (Users) */}
+            {isClicked && node.type === 'user' && (
+              <div className="absolute top-full mt-4 flex flex-col items-center bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-auto w-32 z-50">
+                 {node.avatar_url && <img src={node.avatar_url} alt="avatar" className="w-8 h-8 rounded-full mb-1 object-cover" />}
                  <button className="w-full text-left px-2 py-1 text-xs text-white/80 hover:text-white hover:bg-white/10 rounded">Message User</button>
                  <button className="w-full text-left px-2 py-1 text-xs text-white/80 hover:text-white hover:bg-white/10 rounded">View Profile</button>
                  <button className="w-full text-left px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded">Report</button>
@@ -79,21 +91,7 @@ function GraphNode({ node, onClick, onAskDoubt }: { node: NodeData, onClick?: (n
             )}
           </div>
         </Html>
-      ) : (
-        <>
-          <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
-            {node.full_name || node.title || node.type}
-          </Text>
-          {hovered && node.type === 'note' && (
-            <Html position={[0, size + 0.8, 0]} center zIndexRange={[100, 0]}>
-               <div className="flex flex-col gap-1 bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-auto w-24">
-                 <button onClick={(e) => { e.stopPropagation(); alert("Downloading note..."); }} className="w-full text-left px-2 py-1 text-[10px] text-white/80 hover:text-white hover:bg-white/10 rounded">Download</button>
-                 <button onClick={(e) => { e.stopPropagation(); if(onAskDoubt) onAskDoubt(); }} className="w-full text-left px-2 py-1 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded">Ask Doubt</button>
-               </div>
-            </Html>
-          )}
-        </>
-      )}
+      </mesh>
     </group>
   )
 }
@@ -105,7 +103,7 @@ function GraphLine({ start, end, type, weight = 1 }: { start: [number, number, n
     <Line 
       points={[start, end]} 
       color={isGhostLink ? "#f59e0b" : "rgba(255,255,255,0.2)"} 
-      lineWidth={isContributed ? weight * 5 : 1} 
+      lineWidth={isContributed ? Math.max(1, weight * 5) : 1} 
       dashed={isGhostLink}
       dashScale={isGhostLink ? 10 : 1}
       dashSize={isGhostLink ? 1 : 0}

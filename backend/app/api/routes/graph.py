@@ -63,7 +63,7 @@ async def get_graph(chapter_id: str):
             if ug and ug.get("id"):
                 nodes[ug["id"]] = {"id": ug["id"], "type": "user"}
             if g and g.get("id"):
-                nodes[g["id"]] = {"id": g["id"], "type": "ghost", "title": g.get("title", "Ghost Note")}
+                nodes[g["id"]] = {"id": g["id"], "type": "ghost", "title": g.get("title", "Ghost Note"), "content": g.get("content", "")}
             if m and m.get("id"):
                 nodes[m["id"]] = {"id": m["id"], "type": "master"}
                 
@@ -110,6 +110,18 @@ async def get_graph(chapter_id: str):
                         node_data["full_name"] = full_name or "Student"
             except Exception as prof_err:
                 print(f"Failed to fetch profiles: {prof_err}")
+
+        # Phase 17: Fetch ghost note contents from Supabase
+        ghost_ids = [node["id"] for node in nodes.values() if node["type"] == "ghost"]
+        if ghost_ids:
+            try:
+                ghosts_res = supabase.table("ghost_notes").select("id, content").in_("id", ghost_ids).execute()
+                ghosts_map = {g["id"]: g for g in ghosts_res.data}
+                for node_id, node_data in nodes.items():
+                    if node_data["type"] == "ghost" and node_id in ghosts_map:
+                        node_data["content"] = ghosts_map[node_id].get("content")
+            except Exception as e:
+                print(f"Ghost notes fetch error: {e}")
                 
         return {
             "nodes": list(nodes.values()),
