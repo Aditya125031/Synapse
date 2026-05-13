@@ -3,17 +3,18 @@ from app.db.neo4j_client import neo4j_db
 
 router = APIRouter()
 
-@router.get("/graph/{course}")
-async def get_graph(course: str):
+@router.get("/graph/{chapter_id}")
+async def get_graph(chapter_id: str):
+    # Notice we are matching by chapter_id now!
     query = """
-    MATCH (c:NoteChunk {course: $course})
+    MATCH (c:NoteChunk {chapter_id: $chapter_id})
     OPTIONAL MATCH (u:User)-[w:WROTE]->(c)
     OPTIONAL MATCH (c)-[ct:CONTRIBUTED_TO]->(m:MasterTopic)
     RETURN u, w, c, ct, m
     """
     
     try:
-        results = neo4j_db.execute_query(query, parameters={"course": course})
+        results = neo4j_db.execute_query(query, parameters={"chapter_id": chapter_id})
         
         nodes = {}
         links = []
@@ -29,10 +30,10 @@ async def get_graph(course: str):
                 nodes[u["id"]] = {"id": u["id"], "type": "user"}
                 
             if c and c.get("id"):
-                nodes[c["id"]] = {"id": c["id"], "type": "note", "course": c.get("course")}
+                nodes[c["id"]] = {"id": c["id"], "type": "note"}
                 
             if m and m.get("id"):
-                nodes[m["id"]] = {"id": m["id"], "type": "master", "course": m.get("course")}
+                nodes[m["id"]] = {"id": m["id"], "type": "master"}
                 
             if u and c and w is not None:
                 links.append({"source": u["id"], "target": c["id"], "type": "WROTE"})

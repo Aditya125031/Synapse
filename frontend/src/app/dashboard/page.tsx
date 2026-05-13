@@ -21,12 +21,12 @@ export default function Dashboard() {
     const [activeCourseId, setActiveCourseId] = useState<string | null>(null)
     const [isCourseModalOpen, setIsCourseModalOpen] = useState(false)
     const [newCourseForm, setNewCourseForm] = useState({ name: '', semester: '' })
-    
+
     const [chapters, setChapters] = useState<{ id: string, name: string }[]>([])
     const [isChapterModalOpen, setIsChapterModalOpen] = useState(false)
     const [newChapterForm, setNewChapterForm] = useState({ name: '' })
     const [activeChapterId, setActiveChapterId] = useState<string | null>(null)
-    
+
     const [chapterNotes, setChapterNotes] = useState<{ id: string, title: string, user_id: string }[]>([])
 
     const [isSyncingNode, setIsSyncingNode] = useState(false)
@@ -137,7 +137,7 @@ export default function Dashboard() {
 
             if (res.ok) {
                 const data = await res.json();
-                setCourses(prev => [...prev, data.course]); 
+                setCourses(prev => [...prev, data.course]);
                 setActiveCourseId(data.course.id);
                 setIsCourseModalOpen(false);
                 setNewCourseForm({ name: '', semester: '' });
@@ -158,7 +158,7 @@ export default function Dashboard() {
 
             if (res.ok) {
                 const data = await res.json();
-                setChapters(prev => [...prev, data.chapter]); 
+                setChapters(prev => [...prev, data.chapter]);
                 setActiveChapterId(data.chapter.id);
                 setIsChapterModalOpen(false);
                 setNewChapterForm({ name: '' });
@@ -194,7 +194,7 @@ export default function Dashboard() {
             const { data: { session } } = await supabase.auth.getSession();
             const formData = new FormData();
             formData.append("chapter_id", activeChapterId);
-            formData.append("title", file.name); 
+            formData.append("title", file.name);
             formData.append("file", file);
 
             const res = await fetch("http://localhost:8000/api/notes/upload-pdf", {
@@ -284,7 +284,7 @@ export default function Dashboard() {
 
                         <div className="space-y-1">
                             {!activeClassId && <p className="text-xs text-white/30 px-4 italic">Join or create a class to see courses.</p>}
-                            
+
                             {courses.map(course => (
                                 <div key={course.id} className="mb-1">
                                     <button onClick={() => setActiveCourseId(course.id)} className={`w-full flex items-center justify-between px-4 py-2 mx-2 rounded-lg text-sm transition-all ${activeCourseId === course.id ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
@@ -341,23 +341,24 @@ export default function Dashboard() {
                 <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden min-h-0">
                     <div className="h-full flex flex-col gap-4">
                         <div className="flex justify-between items-center bg-black/20 p-4 rounded-xl border border-white/10">
-                            <h2 className="text-white/80 font-medium flex items-center gap-2"><CloudLightning className="w-5 h-5 text-cyan-400"/> AI Live Editor</h2>
+                            <h2 className="text-white/80 font-medium flex items-center gap-2"><CloudLightning className="w-5 h-5 text-cyan-400" /> AI Live Editor</h2>
                             <button onClick={handleStitch} className="flex items-center gap-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                                 <CloudLightning className="w-4 h-4" /> AI Stitch
                             </button>
                         </div>
                         <div className="flex-1 min-h-0">
-                            <LiveEditor 
-                                ref={editorRef} 
-                                isActive={activeChapterId !== null} 
+                            <LiveEditor
+                                ref={editorRef}
+                                isActive={activeChapterId !== null}
                                 isSyncing={isSyncingNode}
                                 onSync={handleSyncText}
                                 onUpload={handleUploadPdf}
                             />
                         </div>
                     </div>
+                    {/* RIGHT: Graph Panel */}
                     <div className="h-full">
-                        <KnowledgeGraph courseId={activeCourseId || ""} />
+                        <KnowledgeGraph chapterId={activeChapterId || ""} />
                     </div>
                 </div>
             </main>
@@ -368,8 +369,8 @@ export default function Dashboard() {
                     <div className="bg-[#0a0a0f] border border-cyan-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(34,211,238,0.1)]">
                         <button onClick={() => setIsCreateClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
                         <h3 className="text-xl font-bold mb-4 text-cyan-400">Create New Class</h3>
-                        <input type="text" placeholder="Class Name (e.g., CS Section A)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={newClassForm.name} onChange={e => setNewClassForm({...newClassForm, name: e.target.value})} />
-                        <textarea placeholder="Description (Optional)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white outline-none resize-none h-20" value={newClassForm.description} onChange={e => setNewClassForm({...newClassForm, description: e.target.value})} />
+                        <input type="text" placeholder="Class Name (e.g., CS Section A)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={newClassForm.name} onChange={e => setNewClassForm({ ...newClassForm, name: e.target.value })} />
+                        <textarea placeholder="Description (Optional)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white outline-none resize-none h-20" value={newClassForm.description} onChange={e => setNewClassForm({ ...newClassForm, description: e.target.value })} />
                         <button onClick={handleCreateClass} className="w-full bg-cyan-500 text-black font-medium py-2 rounded-lg hover:bg-cyan-400 transition-colors">Create Class</button>
                     </div>
                 </div>

@@ -45,20 +45,22 @@ function GraphLine({ start, end }: { start: [number, number, number], end: [numb
   )
 }
 
-export default function KnowledgeGraph({ courseId }: { courseId?: string }) {
+export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
   const [nodes, setNodes] = useState<NodeData[]>([])
   const [links, setLinks] = useState<LinkData[]>([])
   const [isDoubtModalOpen, setIsDoubtModalOpen] = useState(false)
   const [doubtText, setDoubtText] = useState("")
 
   useEffect(() => {
-    if (!courseId) {
+    // If no chapter is selected, clear the graph
+    if (!chapterId) {
       setNodes([])
       setLinks([])
       return
     }
 
-    fetch(`http://localhost:8000/api/graph/${courseId}`)
+    // Fetch using the chapterId
+    fetch(`http://localhost:8000/api/graph/${chapterId}`)
       .then(res => res.json())
       .then(data => {
         const fetchedNodes = data.nodes || []
@@ -82,7 +84,7 @@ export default function KnowledgeGraph({ courseId }: { courseId?: string }) {
         setLinks(fetchedLinks)
       })
       .catch(err => console.error("Failed to fetch graph data", err))
-  }, [courseId])
+  }, [chapterId])
 
   const renderableLinks = useMemo(() => {
     const nodeMap = new Map(nodes.map(n => [n.id, n]))
