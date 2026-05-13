@@ -10,6 +10,7 @@ from app.api.dependencies import get_current_user
 from datetime import datetime, timezone
 from app.db.vector_service import save_pdf_chunks
 from typing import Annotated
+from app.db.neo4j_client import neo4j_db
 
 load_dotenv()
 router = APIRouter()
@@ -25,6 +26,10 @@ class SyncRequest(BaseModel):
     chapter_id: str
     title: str  # <-- New Topic Name field
     content: str
+
+class StitchRequest(BaseModel):
+    rawText: str
+    chapter_id: str
 
 @router.post("/sync")
 async def sync_to_hive(req: SyncRequest, current_user: dict = Depends(get_current_user)):
@@ -146,3 +151,90 @@ async def process_pdf(
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{note_id}")
+async def delete_note(note_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        # Verify ownership
+        note_res = supabase.table("notes").select("user_id").eq("id", note_id).execute()
+        if not note_res.data or note_res.data[0]["user_id"] != current_user["user_id"]:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this note")
+        
+        # Delete from Supabase
+        supabase.table("notes").delete().eq("id", note_id).execute()
+        
+        # Delete from Neo4j
+        neo4j_db.execute_query(
+            "MATCH (n:Note {id: $note_id}) DETACH DELETE n",
+            {"note_id": note_id}
+        )
+        
+        return {"status": "success", "message": "Note deleted successfully"}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/master-note/{chapter_id}")
+async def get_master_note(chapter_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        res = supabase.table("master_notes").select("content").eq("chapter_id", chapter_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Master note not found for this chapter")
+        
+        return {"status": "success", "content": res.data[0]["content"]}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/stitch")
+async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_current_user)):
+    try:
+        # Generate ghost notes using Gemini
+        model = genai.GenerativeModel("gemini-3.1-flash-lite")
+        prompt = f"Analyze these student notes and identify any missing key concepts. Generate 1 or 2 short 'Ghost Notes' that fill in the gaps. Return ONLY a valid JSON array of objects with keys 'title' and 'content' and NO markdown formatting.\n\nNotes:\n{req.rawText}"
+        
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:-3].strip()
+        elif text.startswith("```"):
+            text = text[3:-3].strip()
+            
+        import json
+        ghost_notes = json.loads(text)
+        
+        # Save them to Supabase and Neo4j
+        for ghost in ghost_notes:
+            title = f"[GHOST] {ghost.get('title', 'Ghost Note')}"
+            content = ghost.get('content', '')
+            
+            # Save to Supabase notes table
+            res = supabase.table("notes").insert({
+                "chapter_id": req.chapter_id,
+                "user_id": current_user["user_id"],
+                "title": title
+            }).execute()
+            
+            ghost_id = res.data[0]["id"]
+            
+            # Save to Neo4j
+            query = """
+            MERGE (u:User {id: $user_id})
+            MERGE (g:GhostNote {id: $ghost_id, chapter_id: $chapter_id, title: $title})
+            MERGE (m:MasterTopic {chapter_id: $chapter_id})
+            MERGE (u)-[:RECEIVED_GHOST]->(g)
+            MERGE (g)-[:DERIVED_FROM]->(m)
+            """
+            neo4j_db.execute_query(query, parameters={
+                "user_id": current_user["user_id"],
+                "ghost_id": ghost_id,
+                "chapter_id": req.chapter_id,
+                "title": title
+            })
+            
+        return {"status": "success", "ghost_notes": ghost_notes}
+    except Exception as e:
+        print(f"Stitch error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to stitch notes")

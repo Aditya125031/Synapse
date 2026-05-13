@@ -13,7 +13,8 @@ export default function Profile() {
         grad_year: '2029',
         semester: '4',
         phone: '',
-        hostel: 'Ashoka 1208'
+        hostel: 'Ashoka 1208',
+        avatar_url: ''
     })
 
     useEffect(() => {
@@ -88,6 +89,11 @@ export default function Profile() {
                     <div className="space-y-1 col-span-2">
                         <label className="text-xs text-white/50 flex items-center gap-2"><MapPin className="w-3 h-3" /> Hostel Room</label>
                         <input name="hostel" value={f.hostel} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:border-cyan-500/50" />
+                    </div>
+
+                    <div className="space-y-1 col-span-2">
+                        <label className="text-xs text-white/50 flex items-center gap-2"><User className="w-3 h-3" /> Avatar URL</label>
+                        <input name="avatar_url" value={f.avatar_url} onChange={handleChange} placeholder="https://example.com/avatar.jpg" className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:border-cyan-500/50" />
                     </div>
                 </div>
 

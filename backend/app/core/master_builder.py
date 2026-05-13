@@ -88,19 +88,16 @@ def build_master_notes(chapter_id: str):
                 master_notes_inserted.append(res.data[0])
                 
                 # FIXED: Update Neo4j to link using chapter_id
-                for c in cluster_chunks:
-                    chunk_id = c["id"]
-                    query = """
-                    MERGE (m:MasterTopic {id: $master_id, chapter_id: $chapter_id})
-                    WITH m
-                    MATCH (c:NoteChunk {id: $chunk_id})
-                    MERGE (c)-[:CONTRIBUTED_TO]->(m)
-                    """
-                    neo4j_db.execute_query(query, parameters={
-                        "master_id": master_id,
-                        "chapter_id": chapter_id,
-                        "chunk_id": chunk_id
-                    })
+                query = """
+                MERGE (m:MasterTopic {id: $master_id, chapter_id: $chapter_id})
+                WITH m
+                MATCH (n:Note {chapter_id: $chapter_id})
+                MERGE (n)-[:CONTRIBUTED_TO]->(m)
+                """
+                neo4j_db.execute_query(query, parameters={
+                    "master_id": master_id,
+                    "chapter_id": chapter_id
+                })
         except Exception as e:
             print(f"Error processing cluster {label}: {e}")
             

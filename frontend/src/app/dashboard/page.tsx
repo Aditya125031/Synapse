@@ -4,7 +4,7 @@ import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
 import { useState, useEffect, useRef } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown } from 'lucide-react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2 } from 'lucide-react'
 import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
@@ -227,6 +227,7 @@ export default function Dashboard() {
     };
 
     const handleStitch = async () => {
+        if (!activeChapterId) return alert("Select a chapter first.");
         if (!editorRef.current) return;
         const rawText = editorRef.current.getText();
         if (!rawText.trim()) return alert("Please type some notes first before stitching!");
@@ -235,7 +236,7 @@ export default function Dashboard() {
             const res = await fetch('http://localhost:8000/api/notes/stitch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-                body: JSON.stringify({ rawText })
+                body: JSON.stringify({ rawText, chapter_id: activeChapterId })
             });
             if (res.ok) {
                 const data = await res.json();
@@ -244,6 +245,23 @@ export default function Dashboard() {
             } else alert("Failed to fetch ghost notes.");
         } catch (err) { console.error(err); }
     }
+
+    const handleDeleteNote = async (noteId: string) => {
+        if (!confirm("Are you sure you want to delete this note?")) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`http://localhost:8000/api/notes/${noteId}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${session?.access_token}` }
+            });
+            if (res.ok) {
+                setChapterNotes(prev => prev.filter(n => n.id !== noteId));
+                alert("Note deleted successfully.");
+            } else {
+                alert("Failed to delete note: " + (await res.json()).detail);
+            }
+        } catch (error) { console.error(error); }
+    };
 
     // --- UI RENDER ---
     return (
@@ -322,10 +340,15 @@ export default function Dashboard() {
                                                     {activeChapterId === chapter.id && (
                                                         <div className="mt-2 space-y-1 pl-3 border-l-2 border-white/5 ml-2">
                                                             {chapterNotes.length === 0 ? <p className="text-[10px] text-white/30 px-2 italic py-1">No notes in the hive yet.</p> : chapterNotes.map(note => (
-                                                                <button key={note.id} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs bg-white/[0.02] hover:bg-white/10 text-white/60 hover:text-white transition-all text-left group">
-                                                                    <FileText className="w-3.5 h-3.5 text-emerald-500/70 group-hover:text-emerald-400 shrink-0" />
-                                                                    <span className="truncate">{note.title}</span>
-                                                                </button>
+                                                                <div key={note.id} className="w-full flex items-center justify-between px-2 py-1.5 rounded-md bg-white/[0.02] hover:bg-white/10 transition-all group">
+                                                                    <button className="flex items-center gap-2 text-xs text-white/60 group-hover:text-white text-left flex-1 truncate">
+                                                                        <FileText className="w-3.5 h-3.5 text-emerald-500/70 group-hover:text-emerald-400 shrink-0" />
+                                                                        <span className="truncate">{note.title}</span>
+                                                                    </button>
+                                                                    <button onClick={() => handleDeleteNote(note.id)} className="text-white/20 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
                                                             ))}
                                                         </div>
                                                     )}

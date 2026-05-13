@@ -3,7 +3,8 @@
 import { useMemo, useState, useEffect } from 'react'
 import { MessageCircleQuestion } from 'lucide-react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Line, Sphere, Text } from '@react-three/drei'
+import { OrbitControls, Line, Sphere, Text, Html } from '@react-three/drei'
+import { sb as supabase } from '@/lib/supabase'
 
 // Interfaces
 interface NodeData {
@@ -13,6 +14,8 @@ interface NodeData {
   x?: number
   y?: number
   z?: number
+  full_name?: string
+  avatar_url?: string
 }
 
 interface LinkData {
@@ -22,26 +25,54 @@ interface LinkData {
 }
 
 // Subcomponents
-function GraphNode({ node }: { node: NodeData }) {
-  const color = node.type === 'master' ? '#06b6d4' : node.type === 'user' ? '#a855f7' : '#3b82f6'
-  const size = node.type === 'master' ? 0.8 : node.type === 'user' ? 0.6 : 0.4
+function GraphNode({ node, onClick }: { node: NodeData, onClick?: (node: NodeData) => void }) {
+  const color = node.type === 'master' ? '#06b6d4' : node.type === 'user' ? '#a855f7' : node.type === 'ghost' ? '#f59e0b' : '#3b82f6'
+  const size = node.type === 'master' ? 0.8 : node.type === 'user' ? 0.6 : node.type === 'ghost' ? 0.5 : 0.4
   
   return (
-    <group position={[node.x || 0, node.y || 0, node.z || 0]}>
+    <group position={[node.x || 0, node.y || 0, node.z || 0]} onClick={(e) => { e.stopPropagation(); onClick && onClick(node); }} onPointerOver={(e) => { if (node.type === 'master') document.body.style.cursor = 'pointer'; }} onPointerOut={() => document.body.style.cursor = 'auto'}>
       <Sphere args={[size, 16, 16]}>
         <meshStandardMaterial color={color} />
       </Sphere>
-      {/* Short label floating above */}
-      <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
-        {node.type}
-      </Text>
+      {node.type === 'user' ? (
+        <Html position={[0, size + 0.3, 0]} center zIndexRange={[100, 0]}>
+          <div className="group relative flex flex-col items-center cursor-pointer">
+            <div className="bg-purple-500/20 text-purple-200 border border-purple-500/50 px-2 py-0.5 rounded text-[10px] whitespace-nowrap backdrop-blur-sm pointer-events-auto">
+              {node.full_name || "Unknown User"}
+            </div>
+            {/* Hover Tooltip */}
+            <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-none w-32 z-50">
+              {node.avatar_url ? (
+                <img src={node.avatar_url} alt="avatar" className="w-8 h-8 rounded-full mb-1 object-cover" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-purple-500/50 mb-1 flex items-center justify-center text-xs font-bold text-white">?</div>
+              )}
+              <span className="text-white text-xs text-center font-bold truncate w-full">{node.full_name || "Unknown"}</span>
+              <span className="text-white/40 text-[9px] text-center font-mono truncate w-full">{node.id.slice(0, 8)}...</span>
+            </div>
+          </div>
+        </Html>
+      ) : (
+        <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
+          {node.type}
+        </Text>
+      )}
     </group>
   )
 }
 
-function GraphLine({ start, end }: { start: [number, number, number], end: [number, number, number] }) {
+function GraphLine({ start, end, type }: { start: [number, number, number], end: [number, number, number], type?: string }) {
+  const isGhostLink = type === 'RECEIVED_GHOST' || type === 'DERIVED_FROM'
   return (
-    <Line points={[start, end]} color="rgba(255,255,255,0.2)" lineWidth={1} />
+    <Line 
+      points={[start, end]} 
+      color={isGhostLink ? "#f59e0b" : "rgba(255,255,255,0.2)"} 
+      lineWidth={1} 
+      dashed={isGhostLink}
+      dashScale={isGhostLink ? 10 : 1}
+      dashSize={isGhostLink ? 1 : 0}
+      dashOffset={isGhostLink ? 0.5 : 0}
+    />
   )
 }
 
@@ -96,11 +127,12 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
         return {
           id: `${link.source}-${link.target}-${i}`,
           start: [sourceNode.x, sourceNode.y, sourceNode.z] as [number, number, number],
-          end: [targetNode.x, targetNode.y, targetNode.z] as [number, number, number]
+          end: [targetNode.x, targetNode.y, targetNode.z] as [number, number, number],
+          type: link.type
         }
       }
       return null
-    }).filter(Boolean) as {id: string, start: [number, number, number], end: [number, number, number]}[]
+    }).filter(Boolean) as {id: string, start: [number, number, number], end: [number, number, number], type: string}[]
   }, [nodes, links])
 
   const handleSubmitDoubt = () => {
@@ -109,12 +141,40 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
     setDoubtText("")
   }
 
+  const handleNodeClick = async (node: NodeData) => {
+    if (node.type === 'master' && chapterId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`http://localhost:8000/api/notes/master-note/${chapterId}`, {
+          headers: { "Authorization": `Bearer ${session?.access_token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const blob = new Blob([data.content], { type: "text/markdown" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "master_note.md";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } else {
+          alert("Failed to download master note: " + (await res.json()).detail);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col relative bg-black/20 rounded-2xl border border-white/10 overflow-hidden backdrop-blur-sm">
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
         <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#06b6d4]"></span> Master Node</div>
         <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#3b82f6]"></span> Note Chunk</div>
         <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#a855f7]"></span> User</div>
+        <div className="flex items-center gap-2 text-xs text-white/60"><span className="w-2 h-2 rounded-full bg-[#f59e0b]"></span> Ghost Note</div>
       </div>
 
       <button 
@@ -132,11 +192,11 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
             <OrbitControls enableDamping dampingFactor={0.05} />
             
             {nodes.map(node => (
-              <GraphNode key={node.id} node={node} />
+              <GraphNode key={node.id} node={node} onClick={handleNodeClick} />
             ))}
             
             {renderableLinks.map(link => (
-              <GraphLine key={link.id} start={link.start} end={link.end} />
+              <GraphLine key={link.id} start={link.start} end={link.end} type={link.type} />
             ))}
           </Canvas>
         </div>
