@@ -11,6 +11,7 @@ supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_
 class CourseCreate(BaseModel):
     name: str
     semester: str
+    class_id: str # <-- ADDED THIS
 
 class ChapterCreate(BaseModel):
     course_id: str
@@ -29,10 +30,11 @@ async def create_course(req: CourseCreate, user: dict = Depends(get_current_user
         if days_since < 30:
             raise HTTPException(status_code=429, detail=f"Rate Limit: You must wait {30 - days_since} more days to create another course.")
             
-    # Create the Course
+    # Create the Course WITH the class_id
     data = supabase.table("courses").insert({
         "name": req.name,
         "semester": req.semester,
+        "class_id": req.class_id, # <-- ADDED THIS
         "created_by": user_id
     }).execute()
     

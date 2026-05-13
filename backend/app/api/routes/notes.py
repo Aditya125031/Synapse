@@ -83,7 +83,7 @@ async def process_pdf(
     print("----------------------------\n")
     try:
         # 1. Manually parse the multipart form data
-        form_data = await request.form()
+        #form_data = await request.form()
         
         chapter_id = form_data.get("chapter_id")
         title = form_data.get("title")

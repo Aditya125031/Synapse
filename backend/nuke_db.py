@@ -29,19 +29,35 @@ def nuke_supabase():
     try:
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
         
-        # We use .neq("id", "00000000-0000-0000-0000-000000000000") as a hack 
-        # to select ALL rows in the REST API. 
-        # We must delete in this exact order to avoid Foreign Key blockages.
-        supabase.table("note_chunks").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
-        supabase.table("chapters").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
-        supabase.table("courses").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        # We must delete in this exact order (Bottom-Up) to avoid Foreign Key blockages!
+        tables_to_nuke = [
+            "master_notes",   # AI generated master notes
+            "note_chunks",    # Vectorized chunks
+            "notes",          # Parent notes
+            "chapters",       # Chapters
+            "courses",        # Courses
+            "class_members",  # Memberships
+            "classes"         # Top-level Classes
+        ]
+        
+        for table in tables_to_nuke:
+            try:
+                # We use .neq("id", "00...") as a hack to select ALL rows in the REST API.
+                supabase.table(table).delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+                print(f"  🧹 Cleared table: {table}")
+            except Exception as e:
+                print(f"  ⚠️ Skipped table: {table} (Might not exist yet or is already empty)")
         
         # Reset everyone's reputation back to 0
-        supabase.table("profiles").update({"reputation": 0}).neq("id", "00000000-0000-0000-0000-000000000000").execute()
-        
+        try:
+            supabase.table("profiles").update({"reputation": 0}).neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            print("  🔄 Reset all user reputations to 0")
+        except Exception:
+            pass
+            
         print("✅ Supabase Data Nuked! (Auth users kept for easy re-testing)")
     except Exception as e:
-        print(f"❌ Supabase Error: {e}")
+        print(f"❌ Supabase Connection Error: {e}")
 
 if __name__ == "__main__":
     print("☢️ INITATING SYNAPSE DATABASE WIPE ☢️")
