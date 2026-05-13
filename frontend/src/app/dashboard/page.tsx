@@ -4,18 +4,21 @@ import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
 import { useState, useEffect, useRef } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Settings, Users, FileText, X, Plus, ChevronDown } from 'lucide-react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown } from 'lucide-react'
 import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
     // --- STATE ---
-    const [classes, setClasses] = useState<{ id: string, name: string, role: string }[]>([])
+    const [classes, setClasses] = useState<{ id: string, name: string, role: string, join_code: string }[]>([])
     const [activeClassId, setActiveClassId] = useState<string | null>(null)
     const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false)
     const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false)
     const [isJoinClassModalOpen, setIsJoinClassModalOpen] = useState(false)
     const [newClassForm, setNewClassForm] = useState({ name: '', description: '' })
     const [joinCode, setJoinCode] = useState("")
+
+    const [pendingRequests, setPendingRequests] = useState<any[]>([])
+    const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false)
 
     const [courses, setCourses] = useState<{ id: string, name: string, semester: string }[]>([])
     const [activeCourseId, setActiveCourseId] = useState<string | null>(null)
@@ -36,9 +39,20 @@ export default function Dashboard() {
     const fetchClasses = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        const { data, error } = await supabase.from('class_members').select(`role, classes ( id, name )`).eq('user_id', session.user.id);
+
+        // Fetch only APPROVED classes and get the join code!
+        const { data, error } = await supabase.from('class_members')
+            .select(`role, status, classes ( id, name, join_code )`)
+            .eq('user_id', session.user.id)
+            .eq('status', 'approved');
+
         if (data) {
-            const formattedClasses = data.map((item: any) => ({ id: item.classes.id, name: item.classes.name, role: item.role }));
+            const formattedClasses = data.map((item: any) => ({
+                id: item.classes.id,
+                name: item.classes.name,
+                role: item.role,
+                join_code: item.classes.join_code
+            }));
             setClasses(formattedClasses);
             if (formattedClasses.length > 0 && !activeClassId) setActiveClassId(formattedClasses[0].id);
         }
@@ -46,15 +60,12 @@ export default function Dashboard() {
 
     useEffect(() => { fetchClasses(); }, []);
 
+    // ... (Keep existing fetch effects for Courses, Chapters, Notes)
     useEffect(() => {
         if (!activeClassId) { setCourses([]); return; }
         const fetchCourses = async () => {
             const { data } = await supabase.from('courses').select('id, name, semester').eq('class_id', activeClassId);
-            if (data) {
-                setCourses(data);
-                if (data.length > 0) setActiveCourseId(data[0].id);
-                else setActiveCourseId(null);
-            }
+            if (data) { setCourses(data); if (data.length > 0) setActiveCourseId(data[0].id); else setActiveCourseId(null); }
         };
         fetchCourses();
     }, [activeClassId]);
@@ -63,11 +74,7 @@ export default function Dashboard() {
         if (!activeCourseId) { setChapters([]); return; }
         const fetchChapters = async () => {
             const { data } = await supabase.from('chapters').select('id, name').eq('course_id', activeCourseId).order('created_at', { ascending: true });
-            if (data) {
-                setChapters(data);
-                if (data.length > 0) setActiveChapterId(data[0].id);
-                else setActiveChapterId(null);
-            }
+            if (data) { setChapters(data); if (data.length > 0) setActiveChapterId(data[0].id); else setActiveChapterId(null); }
         };
         fetchChapters();
     }, [activeCourseId]);
@@ -81,7 +88,7 @@ export default function Dashboard() {
         fetchNotes();
     }, [activeChapterId]);
 
-    // --- CLASS HANDLERS ---
+    // --- CLASS & REQUEST HANDLERS ---
     const handleCreateClass = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -93,14 +100,12 @@ export default function Dashboard() {
 
             if (res.ok) {
                 const data = await res.json();
-                await fetchClasses(); // Refresh list
+                await fetchClasses();
                 setActiveClassId(data.class.id);
                 setIsCreateClassModalOpen(false);
                 setNewClassForm({ name: '', description: '' });
                 alert(`Class Created! Invite code: ${data.class.join_code}`);
-            } else {
-                alert((await res.json()).detail);
-            }
+            } else alert((await res.json()).detail);
         } catch (error) { console.error(error); }
     };
 
@@ -114,17 +119,41 @@ export default function Dashboard() {
             });
 
             if (res.ok) {
-                await fetchClasses(); // Refresh list
                 setIsJoinClassModalOpen(false);
                 setJoinCode("");
-                alert("Successfully joined class!");
-            } else {
-                alert((await res.json()).detail);
+                alert("Request sent! Waiting for admin approval.");
+            } else alert((await res.json()).detail);
+        } catch (error) { console.error(error); }
+    };
+
+    const fetchRequests = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`http://localhost:8000/api/classes/requests/${activeClassId}`, {
+                headers: { "Authorization": `Bearer ${session?.access_token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPendingRequests(data.requests);
             }
         } catch (error) { console.error(error); }
     };
 
-    // --- COURSE & CHAPTER HANDLERS ---
+    const handleRequestAction = async (userId: string, action: 'approve' | 'reject') => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`http://localhost:8000/api/classes/${action}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+                body: JSON.stringify({ class_id: activeClassId, user_id: userId })
+            });
+            if (res.ok) {
+                fetchRequests(); // Refresh the modal list
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    // --- COURSE/CHAPTER/EDITOR HANDLERS (Unchanged) ---
     const handleCreateCourse = async () => {
         if (!activeClassId) return alert("Please select or create a class first.");
         try {
@@ -134,14 +163,9 @@ export default function Dashboard() {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
                 body: JSON.stringify({ name: newCourseForm.name, semester: newCourseForm.semester, class_id: activeClassId })
             });
-
             if (res.ok) {
-                const data = await res.json();
-                setCourses(prev => [...prev, data.course]);
-                setActiveCourseId(data.course.id);
-                setIsCourseModalOpen(false);
-                setNewCourseForm({ name: '', semester: '' });
-                alert("Course Created!");
+                const data = await res.json(); setCourses(prev => [...prev, data.course]); setActiveCourseId(data.course.id);
+                setIsCourseModalOpen(false); setNewCourseForm({ name: '', semester: '' }); alert("Course Created!");
             } else alert((await res.json()).detail);
         } catch (error) { console.error(error); }
     };
@@ -155,19 +179,13 @@ export default function Dashboard() {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
                 body: JSON.stringify({ name: newChapterForm.name, course_id: activeCourseId })
             });
-
             if (res.ok) {
-                const data = await res.json();
-                setChapters(prev => [...prev, data.chapter]);
-                setActiveChapterId(data.chapter.id);
-                setIsChapterModalOpen(false);
-                setNewChapterForm({ name: '' });
-                alert("Chapter Created!");
+                const data = await res.json(); setChapters(prev => [...prev, data.chapter]); setActiveChapterId(data.chapter.id);
+                setIsChapterModalOpen(false); setNewChapterForm({ name: '' }); alert("Chapter Created!");
             } else alert((await res.json()).detail);
         } catch (error) { console.error(error); }
     };
 
-    // --- LIVE EDITOR BRAIN FUNCTIONS ---
     const handleSyncText = async (text: string) => {
         if (!activeChapterId) return alert("Select a chapter first.");
         setIsSyncingNode(true);
@@ -178,7 +196,6 @@ export default function Dashboard() {
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
                 body: JSON.stringify({ chapter_id: activeChapterId, title: "Live Node Contribution", content: text })
             });
-
             if (res.ok) {
                 alert("Successfully stitched to the Knowledge Graph!");
                 const { data } = await supabase.from('notes').select('id, title, user_id').eq('chapter_id', activeChapterId).order('created_at', { ascending: false });
@@ -196,13 +213,11 @@ export default function Dashboard() {
             formData.append("chapter_id", activeChapterId);
             formData.append("title", file.name);
             formData.append("file", file);
-
             const res = await fetch("http://localhost:8000/api/notes/upload-pdf", {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${session?.access_token}` },
                 body: formData
             });
-
             if (res.ok) {
                 alert(`Success! Mapped ${file.name} to the Hive.`);
                 const { data } = await supabase.from('notes').select('id, title, user_id').eq('chapter_id', activeChapterId).order('created_at', { ascending: false });
@@ -215,7 +230,6 @@ export default function Dashboard() {
         if (!editorRef.current) return;
         const rawText = editorRef.current.getText();
         if (!rawText.trim()) return alert("Please type some notes first before stitching!");
-
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const res = await fetch('http://localhost:8000/api/notes/stitch', {
@@ -223,7 +237,6 @@ export default function Dashboard() {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
                 body: JSON.stringify({ rawText })
             });
-
             if (res.ok) {
                 const data = await res.json();
                 const ghost_notes = data.ghost_notes || [];
@@ -254,13 +267,23 @@ export default function Dashboard() {
                         <div className="absolute top-16 left-4 right-4 bg-[#0a0a0f] border border-white/10 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
                             <div className="max-h-48 overflow-y-auto custom-scrollbar">
                                 {classes.map(c => (
-                                    <button key={c.id} onClick={() => { setActiveClassId(c.id); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/5 text-left">
-                                        <div className={`w-2 h-2 rounded-full ${activeClassId === c.id ? 'bg-cyan-400' : 'bg-transparent'}`} />
-                                        <span className={`text-sm ${activeClassId === c.id ? 'text-white' : 'text-white/70'}`}>{c.name}</span>
+                                    <button key={c.id} onClick={() => { setActiveClassId(c.id); setIsClassDropdownOpen(false); }} className="w-full flex items-center justify-between px-4 py-2 hover:bg-white/5 text-left">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-2 h-2 rounded-full shrink-0 ${activeClassId === c.id ? 'bg-cyan-400' : 'bg-transparent'}`} />
+                                            <span className={`text-sm truncate ${activeClassId === c.id ? 'text-white' : 'text-white/70'}`}>{c.name}</span>
+                                        </div>
+                                        {/* SHOWING THE CODE HERE */}
+                                        <span className="text-[10px] text-white/30 font-mono tracking-widest">{c.join_code}</span>
                                     </button>
                                 ))}
                             </div>
                             <div className="px-2 pt-2 mt-2 border-t border-white/10 space-y-1 pb-2">
+                                {/* ONLY SHOW IF ADMIN */}
+                                {classes.find(c => c.id === activeClassId)?.role === 'admin' && (
+                                    <button onClick={() => { fetchRequests(); setIsRequestsModalOpen(true); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-amber-400 hover:bg-amber-500/10 rounded-lg">
+                                        <Bell className="w-4 h-4" /> Pending Requests
+                                    </button>
+                                )}
                                 <button onClick={() => { setIsJoinClassModalOpen(true); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-indigo-400 hover:bg-indigo-500/10 rounded-lg">
                                     <Users className="w-4 h-4" /> Join Class
                                 </button>
@@ -276,30 +299,21 @@ export default function Dashboard() {
                     <div>
                         <div className="flex items-center justify-between text-xs font-bold text-indigo-300/50 uppercase tracking-widest mb-3 px-2">
                             <span className="flex items-center"><BookOpen className="w-3.5 h-3.5 mr-2" /> Class Courses</span>
-                            {/* ONLY SHOW CREATE COURSE IF A CLASS IS SELECTED */}
-                            {activeClassId && (
-                                <button onClick={() => setIsCourseModalOpen(true)} className="hover:text-cyan-400 transition-colors p-1" title="Create Course">+</button>
-                            )}
+                            {activeClassId && <button onClick={() => setIsCourseModalOpen(true)} className="hover:text-cyan-400 transition-colors p-1" title="Create Course">+</button>}
                         </div>
 
                         <div className="space-y-1">
                             {!activeClassId && <p className="text-xs text-white/30 px-4 italic">Join or create a class to see courses.</p>}
-
                             {courses.map(course => (
                                 <div key={course.id} className="mb-1">
                                     <button onClick={() => setActiveCourseId(course.id)} className={`w-full flex items-center justify-between px-4 py-2 mx-2 rounded-lg text-sm transition-all ${activeCourseId === course.id ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
-                                        <span className="flex items-center gap-3 truncate">
-                                            <BookOpen className={`w-4 h-4 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} />
-                                            {course.name} <span className="text-[10px] text-white/30 ml-2">({course.semester})</span>
-                                        </span>
+                                        <span className="flex items-center gap-3 truncate"><BookOpen className={`w-4 h-4 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} /> {course.name} <span className="text-[10px] text-white/30 ml-2">({course.semester})</span></span>
                                         <ChevronRight className={`w-4 h-4 transition-transform ${activeCourseId === course.id ? "rotate-90 text-cyan-400" : ""}`} />
                                     </button>
 
                                     {activeCourseId === course.id && (
                                         <div className="pl-4 pr-2 py-2 space-y-1 border-l-2 border-white/5 ml-6 mt-1">
-                                            <button onClick={() => setIsChapterModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-white/20 text-white/40 hover:text-white/80 hover:border-white/40 transition-all mb-2">
-                                                + Propose New Chapter
-                                            </button>
+                                            <button onClick={() => setIsChapterModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-white/20 text-white/40 hover:text-white/80 hover:border-white/40 transition-all mb-2">+ Propose New Chapter</button>
                                             {chapters.map(chapter => (
                                                 <div key={chapter.id} className="mb-1">
                                                     <button onClick={() => setActiveChapterId(chapter.id)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${activeChapterId === chapter.id ? "bg-indigo-500/30 text-white border border-indigo-500/50" : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"}`}>
@@ -307,16 +321,12 @@ export default function Dashboard() {
                                                     </button>
                                                     {activeChapterId === chapter.id && (
                                                         <div className="mt-2 space-y-1 pl-3 border-l-2 border-white/5 ml-2">
-                                                            {chapterNotes.length === 0 ? (
-                                                                <p className="text-[10px] text-white/30 px-2 italic py-1">No notes in the hive yet. Use the editor to add some!</p>
-                                                            ) : (
-                                                                chapterNotes.map(note => (
-                                                                    <button key={note.id} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs bg-white/[0.02] hover:bg-white/10 text-white/60 hover:text-white transition-all text-left group">
-                                                                        <FileText className="w-3.5 h-3.5 text-emerald-500/70 group-hover:text-emerald-400 shrink-0" />
-                                                                        <span className="truncate">{note.title}</span>
-                                                                    </button>
-                                                                ))
-                                                            )}
+                                                            {chapterNotes.length === 0 ? <p className="text-[10px] text-white/30 px-2 italic py-1">No notes in the hive yet.</p> : chapterNotes.map(note => (
+                                                                <button key={note.id} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs bg-white/[0.02] hover:bg-white/10 text-white/60 hover:text-white transition-all text-left group">
+                                                                    <FileText className="w-3.5 h-3.5 text-emerald-500/70 group-hover:text-emerald-400 shrink-0" />
+                                                                    <span className="truncate">{note.title}</span>
+                                                                </button>
+                                                            ))}
                                                         </div>
                                                     )}
                                                 </div>
@@ -347,62 +357,76 @@ export default function Dashboard() {
                             </button>
                         </div>
                         <div className="flex-1 min-h-0">
-                            <LiveEditor
-                                ref={editorRef}
-                                isActive={activeChapterId !== null}
-                                isSyncing={isSyncingNode}
-                                onSync={handleSyncText}
-                                onUpload={handleUploadPdf}
-                            />
+                            <LiveEditor ref={editorRef} isActive={activeChapterId !== null} isSyncing={isSyncingNode} onSync={handleSyncText} onUpload={handleUploadPdf} />
                         </div>
                     </div>
-                    {/* RIGHT: Graph Panel */}
                     <div className="h-full">
                         <KnowledgeGraph chapterId={activeChapterId || ""} />
                     </div>
                 </div>
             </main>
 
-            {/* Create Class Modal */}
+            {/* Admin Pending Requests Modal */}
+            {isRequestsModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-amber-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(245,158,11,0.1)]">
+                        <button onClick={() => setIsRequestsModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        <h3 className="text-xl font-bold mb-4 text-amber-400">Join Requests</h3>
+                        {pendingRequests.length === 0 ? (
+                            <p className="text-sm text-white/50 text-center py-4">No pending requests.</p>
+                        ) : (
+                            <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+                                {pendingRequests.map(req => (
+                                    <div key={req.user_id} className="bg-white/5 p-3 rounded-lg border border-white/10 flex flex-col gap-3">
+                                        <span className="text-xs text-white/70 font-mono break-all bg-black/50 p-2 rounded">User ID: {req.user_id}</span>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => handleRequestAction(req.user_id, 'approve')} className="flex-1 bg-emerald-500/20 text-emerald-400 py-1.5 rounded text-xs font-bold hover:bg-emerald-500/30 transition-colors">Approve</button>
+                                            <button onClick={() => handleRequestAction(req.user_id, 'reject')} className="flex-1 bg-red-500/20 text-red-400 py-1.5 rounded text-xs font-bold hover:bg-red-500/30 transition-colors">Reject</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Standard Create/Join Modals */}
             {isCreateClassModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-[#0a0a0f] border border-cyan-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(34,211,238,0.1)]">
                         <button onClick={() => setIsCreateClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
                         <h3 className="text-xl font-bold mb-4 text-cyan-400">Create New Class</h3>
-                        <input type="text" placeholder="Class Name (e.g., CS Section A)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={newClassForm.name} onChange={e => setNewClassForm({ ...newClassForm, name: e.target.value })} />
-                        <textarea placeholder="Description (Optional)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white outline-none resize-none h-20" value={newClassForm.description} onChange={e => setNewClassForm({ ...newClassForm, description: e.target.value })} />
+                        <input type="text" placeholder="Class Name" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={newClassForm.name} onChange={e => setNewClassForm({ ...newClassForm, name: e.target.value })} />
                         <button onClick={handleCreateClass} className="w-full bg-cyan-500 text-black font-medium py-2 rounded-lg hover:bg-cyan-400 transition-colors">Create Class</button>
                     </div>
                 </div>
             )}
 
-            {/* Join Class Modal */}
             {isJoinClassModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-[#0a0a0f] border border-indigo-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(99,102,241,0.1)]">
                         <button onClick={() => setIsJoinClassModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
                         <h3 className="text-xl font-bold mb-4 text-indigo-400">Join a Class</h3>
-                        <p className="text-sm text-white/50 mb-4">Enter the 10-character invite code.</p>
                         <input type="text" placeholder="e.g., SYN-A1B2C3" className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-center text-lg tracking-widest uppercase text-white outline-none mb-4 font-mono" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} />
-                        <button onClick={handleJoinClass} className="w-full bg-indigo-500 text-white font-medium py-2 rounded-lg hover:bg-indigo-600 transition-colors">Join Class</button>
+                        <button onClick={handleJoinClass} className="w-full bg-indigo-500 text-white font-medium py-2 rounded-lg hover:bg-indigo-600 transition-colors">Send Request</button>
                     </div>
                 </div>
             )}
 
-            {/* Course Modal */}
+            {/* Course & Chapter Modals */}
             {isCourseModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-[#0a0a0f] border border-white/10 p-6 rounded-2xl w-96 relative">
                         <button onClick={() => setIsCourseModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
                         <h3 className="text-xl font-bold mb-4 text-cyan-400">Create Course</h3>
-                        <input type="text" placeholder="Course Name (e.g., DBMS)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={newCourseForm.name} onChange={e => setNewCourseForm({ ...newCourseForm, name: e.target.value })} />
-                        <input type="text" placeholder="Semester (e.g., 4th Sem)" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white outline-none" value={newCourseForm.semester} onChange={e => setNewCourseForm({ ...newCourseForm, semester: e.target.value })} />
+                        <input type="text" placeholder="Course Name" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={newCourseForm.name} onChange={e => setNewCourseForm({ ...newCourseForm, name: e.target.value })} />
+                        <input type="text" placeholder="Semester" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white outline-none" value={newCourseForm.semester} onChange={e => setNewCourseForm({ ...newCourseForm, semester: e.target.value })} />
                         <button onClick={handleCreateCourse} className="w-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 py-2 rounded-lg">Submit</button>
                     </div>
                 </div>
             )}
 
-            {/* Chapter Modal */}
             {isChapterModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-[#0a0a0f] border border-white/10 p-6 rounded-2xl w-96 relative">

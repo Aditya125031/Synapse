@@ -116,8 +116,8 @@ def restore_supabase():
         -- 8. Master Notes (AI Synthesis)
         CREATE TABLE IF NOT EXISTS public.master_notes (
             id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE,
             content TEXT NOT NULL,
+            chapter_id UUID REFERENCES public.chapters(id) ON DELETE CASCADE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
         );
 
