@@ -12,3 +12,4 @@ python-dotenv
 supabase
 scikit-learn
 numpy
+pip install psycopg2-binary
