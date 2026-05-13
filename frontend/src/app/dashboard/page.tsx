@@ -246,6 +246,29 @@ export default function Dashboard() {
         } catch (err) { console.error(err); }
     }
 
+    const handleGenerateGodNote = async (courseId: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`http://localhost:8000/api/courses/${courseId}/god-note`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${session?.access_token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const blob = new Blob([data.god_note.content], { type: "text/markdown" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `god_note_course_${courseId}.md`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                alert("God Note generated and downloaded!");
+            } else alert("Failed to generate God Note: " + (await res.json()).detail);
+        } catch (err) { console.error(err); }
+    }
+
     const handleDeleteNote = async (noteId: string) => {
         if (!confirm("Are you sure you want to delete this note?")) return;
         try {
@@ -331,6 +354,11 @@ export default function Dashboard() {
 
                                     {activeCourseId === course.id && (
                                         <div className="pl-4 pr-2 py-2 space-y-1 border-l-2 border-white/5 ml-6 mt-1">
+                                            {classes.find(c => c.id === activeClassId)?.role === 'admin' && (
+                                                <button onClick={() => handleGenerateGodNote(course.id)} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30 transition-all mb-2">
+                                                    ✨ Generate God Note
+                                                </button>
+                                            )}
                                             <button onClick={() => setIsChapterModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-white/20 text-white/40 hover:text-white/80 hover:border-white/40 transition-all mb-2">+ Propose New Chapter</button>
                                             {chapters.map(chapter => (
                                                 <div key={chapter.id} className="mb-1">

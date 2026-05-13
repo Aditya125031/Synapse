@@ -23,15 +23,33 @@ interface LinkData {
   source: string
   target: string
   type: string
+  weight?: number
 }
 
 // Subcomponents
-function GraphNode({ node, onClick }: { node: NodeData, onClick?: (node: NodeData) => void }) {
+function GraphNode({ node, onClick, onAskDoubt }: { node: NodeData, onClick?: (node: NodeData) => void, onAskDoubt?: () => void }) {
   const color = node.type === 'master' ? '#06b6d4' : node.type === 'user' ? '#a855f7' : node.type === 'ghost' ? '#f59e0b' : '#3b82f6'
   const size = node.type === 'master' ? 0.8 : node.type === 'user' ? 0.6 : node.type === 'ghost' ? 0.5 : 0.4
+  const [hovered, setHovered] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   
   return (
-    <group position={[node.x || 0, node.y || 0, node.z || 0]} onClick={(e) => { e.stopPropagation(); onClick && onClick(node); }} onPointerOver={(e) => { if (node.type === 'master') document.body.style.cursor = 'pointer'; }} onPointerOut={() => document.body.style.cursor = 'auto'}>
+    <group 
+      position={[node.x || 0, node.y || 0, node.z || 0]} 
+      onClick={(e) => { 
+        e.stopPropagation(); 
+        if (node.type === 'user') setMenuOpen(!menuOpen);
+        else if (onClick) onClick(node); 
+      }} 
+      onPointerOver={(e) => { 
+        e.stopPropagation();
+        setHovered(true);
+        if (node.type === 'master') document.body.style.cursor = 'pointer'; 
+      }} 
+      onPointerOut={() => {
+        setHovered(false);
+        document.body.style.cursor = 'auto';
+      }}>
       <Sphere args={[size, 16, 16]}>
         <meshStandardMaterial color={color} />
       </Sphere>
@@ -51,24 +69,43 @@ function GraphNode({ node, onClick }: { node: NodeData, onClick?: (node: NodeDat
               <span className="text-white text-xs text-center font-bold truncate w-full">{node.full_name || "Unknown"}</span>
               <span className="text-white/40 text-[9px] text-center font-mono truncate w-full">{node.id.slice(0, 8)}...</span>
             </div>
+            {/* User Menu Modal */}
+            {menuOpen && (
+              <div className="absolute top-full mt-2 flex flex-col items-center bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-auto w-32 z-50">
+                 <button className="w-full text-left px-2 py-1 text-xs text-white/80 hover:text-white hover:bg-white/10 rounded">Message User</button>
+                 <button className="w-full text-left px-2 py-1 text-xs text-white/80 hover:text-white hover:bg-white/10 rounded">View Profile</button>
+                 <button className="w-full text-left px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded">Report</button>
+              </div>
+            )}
           </div>
         </Html>
       ) : (
-        <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
-          {node.title || node.type}
-        </Text>
+        <>
+          <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
+            {node.full_name || node.title || node.type}
+          </Text>
+          {hovered && node.type === 'note' && (
+            <Html position={[0, size + 0.8, 0]} center zIndexRange={[100, 0]}>
+               <div className="flex flex-col gap-1 bg-[#0a0a0f] border border-white/10 p-2 rounded-lg shadow-xl pointer-events-auto w-24">
+                 <button onClick={(e) => { e.stopPropagation(); alert("Downloading note..."); }} className="w-full text-left px-2 py-1 text-[10px] text-white/80 hover:text-white hover:bg-white/10 rounded">Download</button>
+                 <button onClick={(e) => { e.stopPropagation(); if(onAskDoubt) onAskDoubt(); }} className="w-full text-left px-2 py-1 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded">Ask Doubt</button>
+               </div>
+            </Html>
+          )}
+        </>
       )}
     </group>
   )
 }
 
-function GraphLine({ start, end, type }: { start: [number, number, number], end: [number, number, number], type?: string }) {
+function GraphLine({ start, end, type, weight = 1 }: { start: [number, number, number], end: [number, number, number], type?: string, weight?: number }) {
   const isGhostLink = type === 'RECEIVED_GHOST' || type === 'DERIVED_FROM'
+  const isContributed = type === 'CONTRIBUTED_TO'
   return (
     <Line 
       points={[start, end]} 
       color={isGhostLink ? "#f59e0b" : "rgba(255,255,255,0.2)"} 
-      lineWidth={1} 
+      lineWidth={isContributed ? weight * 5 : 1} 
       dashed={isGhostLink}
       dashScale={isGhostLink ? 10 : 1}
       dashSize={isGhostLink ? 1 : 0}
@@ -129,11 +166,12 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
           id: `${link.source}-${link.target}-${i}`,
           start: [sourceNode.x, sourceNode.y, sourceNode.z] as [number, number, number],
           end: [targetNode.x, targetNode.y, targetNode.z] as [number, number, number],
-          type: link.type
+          type: link.type,
+          weight: link.weight
         }
       }
       return null
-    }).filter(Boolean) as {id: string, start: [number, number, number], end: [number, number, number], type: string}[]
+    }).filter(Boolean) as {id: string, start: [number, number, number], end: [number, number, number], type: string, weight?: number}[]
   }, [nodes, links])
 
   const handleSubmitDoubt = () => {
@@ -193,11 +231,11 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
             <OrbitControls enableDamping dampingFactor={0.05} />
             
             {nodes.map(node => (
-              <GraphNode key={node.id} node={node} onClick={handleNodeClick} />
+              <GraphNode key={node.id} node={node} onClick={handleNodeClick} onAskDoubt={() => setIsDoubtModalOpen(true)} />
             ))}
             
             {renderableLinks.map(link => (
-              <GraphLine key={link.id} start={link.start} end={link.end} type={link.type} />
+              <GraphLine key={link.id} start={link.start} end={link.end} type={link.type} weight={link.weight} />
             ))}
           </Canvas>
         </div>

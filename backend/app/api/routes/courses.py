@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import os
 from supabase import create_client, Client
 from app.api.dependencies import get_current_user
+from app.core.master_builder import build_god_note
 
 router = APIRouter()
 supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -61,3 +62,24 @@ async def create_chapter(req: ChapterCreate, user: dict = Depends(get_current_us
     }).execute()
     
     return {"status": "success", "chapter": data.data[0]}
+
+@router.post("/{course_id}/god-note")
+async def generate_god_note(course_id: str, user: dict = Depends(get_current_user)):
+    user_id = user["user_id"]
+    
+    # Check if user is admin in the class this course belongs to
+    course_res = supabase.table("courses").select("class_id").eq("id", course_id).execute()
+    if not course_res.data:
+        raise HTTPException(status_code=404, detail="Course not found")
+        
+    class_id = course_res.data[0]["class_id"]
+    
+    member_res = supabase.table("class_members").select("role").eq("class_id", class_id).eq("user_id", user_id).execute()
+    if not member_res.data or member_res.data[0]["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can generate the God Note")
+        
+    result = build_god_note(course_id)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("message"))
+        
+    return result

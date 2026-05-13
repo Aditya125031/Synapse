@@ -50,7 +50,8 @@ async def get_graph(chapter_id: str):
             if u and n and w is not None:
                 links.append({"source": u["id"], "target": n["id"], "type": "UPLOADED"})
             if n and m and ct is not None:
-                links.append({"source": n["id"], "target": m["id"], "type": "CONTRIBUTED_TO"})
+                weight = ct.get("weight", 1.0) if hasattr(ct, "get") else dict(ct).get("weight", 1.0) if hasattr(ct, "items") else 1.0
+                links.append({"source": n["id"], "target": m["id"], "type": "CONTRIBUTED_TO", "weight": weight})
 
         for record in results_ghosts:
             ug = record.get("ug")
@@ -87,13 +88,26 @@ async def get_graph(chapter_id: str):
                 profiles_res = supabase.table("profiles").select("id, full_name, avatar_url").in_("id", user_ids).execute()
                 profiles_map = {p["id"]: p for p in profiles_res.data}
                 
+                emails_map = {}
+                try:
+                    for uid in user_ids:
+                        user_data = supabase.auth.admin.get_user_by_id(uid)
+                        if user_data and user_data.user and user_data.user.email:
+                            emails_map[uid] = user_data.user.email.split("@")[0]
+                except Exception as auth_err:
+                    print(f"Auth fetch error: {auth_err}")
+
                 for node_id, node_data in nodes.items():
                     if node_data["type"] == "user":
+                        full_name = None
                         if node_id in profiles_map:
-                            node_data["full_name"] = profiles_map[node_id].get("full_name") or "Student"
+                            full_name = profiles_map[node_id].get("full_name")
                             node_data["avatar_url"] = profiles_map[node_id].get("avatar_url")
-                        else:
-                            node_data["full_name"] = "Student"
+                        
+                        if not full_name:
+                            full_name = emails_map.get(node_id)
+                            
+                        node_data["full_name"] = full_name or "Student"
             except Exception as prof_err:
                 print(f"Failed to fetch profiles: {prof_err}")
                 

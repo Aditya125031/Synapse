@@ -71,7 +71,7 @@ async def sync_to_hive(req: SyncRequest, background_tasks: BackgroundTasks, curr
         supabase.rpc("increment_reputation", {"user_id": current_user["user_id"], "amount": 10}).execute()
         
         # Trigger background synthesis
-        background_tasks.add_task(build_master_notes, req.chapter_id)
+        background_tasks.add_task(build_master_notes, req.chapter_id, note_id)
         
         return {"status": "success", "message": "Text note synced to collective hive"}
 
@@ -154,7 +154,7 @@ async def process_pdf(
         )
             
         # Trigger background synthesis
-        background_tasks.add_task(build_master_notes, chapter_id)
+        background_tasks.add_task(build_master_notes, chapter_id, note_id)
             
         return {"status": "success", "message": f"Successfully vectorized {len(chunks)} chunks."}
 
