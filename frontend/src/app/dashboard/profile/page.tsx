@@ -6,6 +6,7 @@ import { User, Hash, BookOpen, MapPin, Phone, Save, GraduationCap } from 'lucide
 
 export default function Profile() {
     const [ld, setLd] = useState(false)
+    const [email, setEmail] = useState("")
     const [f, setF] = useState({
         full_name: 'Shuvam Kayal',
         roll_no: 'CS24I1019',
@@ -21,6 +22,7 @@ export default function Profile() {
         const fetchProfile = async () => {
             const { data: { session } } = await sb.auth.getSession()
             if (!session) return
+            setEmail(session.user.email || "")
 
             const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).single()
             if (data) setF(data)
@@ -51,11 +53,19 @@ export default function Profile() {
     return (
         <div className="min-h-screen bg-[#050508] text-white p-8 font-sans">
             <div className="max-w-2xl mx-auto bg-white/[0.02] border border-white/10 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
-                <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-cyan-400 to-indigo-400 text-transparent bg-clip-text">
-                    Synapse Identity
-                </h2>
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-indigo-400 text-transparent bg-clip-text">
+                        Synapse Identity
+                    </h2>
+                    <a href="/dashboard" className="text-sm text-white/50 hover:text-white transition-colors border border-white/10 px-3 py-1 rounded-full">Back to Dashboard</a>
+                </div>
 
                 <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-1 col-span-2">
+                        <label className="text-xs text-white/50 flex items-center gap-2"><User className="w-3 h-3" /> Email Address</label>
+                        <input value={email} disabled className="w-full bg-white/5 border border-white/5 rounded-lg p-2.5 text-sm text-white/40 cursor-not-allowed" />
+                    </div>
+
                     <div className="space-y-1">
                         <label className="text-xs text-white/50 flex items-center gap-2"><User className="w-3 h-3" /> Full Name</label>
                         <input name="full_name" value={f.full_name} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:border-cyan-500/50" />

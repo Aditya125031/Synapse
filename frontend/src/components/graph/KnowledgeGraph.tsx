@@ -16,6 +16,7 @@ interface NodeData {
   z?: number
   full_name?: string
   avatar_url?: string
+  title?: string
 }
 
 interface LinkData {
@@ -54,7 +55,7 @@ function GraphNode({ node, onClick }: { node: NodeData, onClick?: (node: NodeDat
         </Html>
       ) : (
         <Text position={[0, size + 0.3, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
-          {node.type}
+          {node.title || node.type}
         </Text>
       )}
     </group>

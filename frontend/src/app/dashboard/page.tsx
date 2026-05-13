@@ -4,7 +4,7 @@ import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
 import { useState, useEffect, useRef } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2 } from 'lucide-react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2, Settings } from 'lucide-react'
 import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
@@ -360,6 +360,16 @@ export default function Dashboard() {
                             ))}
                         </div>
                     </div>
+                </div>
+
+                {/* SIDEBAR FOOTER (Profile) */}
+                <div className="h-16 shrink-0 border-t border-white/10 p-3 mt-auto flex items-center">
+                    <Link href="/dashboard/profile" className="flex items-center gap-3 text-white/60 hover:text-white transition-colors w-full group">
+                        <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                            <Settings className="w-4 h-4" />
+                        </div>
+                        <span className="text-sm font-medium">Profile & Settings</span>
+                    </Link>
                 </div>
             </aside>
 

@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, BackgroundTasks
 import io
 from pypdf import PdfReader
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from app.db.vector_service import save_pdf_chunks
 from typing import Annotated
 from app.db.neo4j_client import neo4j_db
+from app.core.master_builder import build_master_notes
 
 load_dotenv()
 router = APIRouter()
@@ -32,7 +33,7 @@ class StitchRequest(BaseModel):
     chapter_id: str
 
 @router.post("/sync")
-async def sync_to_hive(req: SyncRequest, current_user: dict = Depends(get_current_user)):
+async def sync_to_hive(req: SyncRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     try:
         # Rate Limit Check (7 Days)
         recent_note = supabase.table("notes").select("created_at").eq("user_id", current_user["user_id"]).eq("chapter_id", req.chapter_id).order("created_at", desc=True).limit(1).execute()
@@ -68,6 +69,10 @@ async def sync_to_hive(req: SyncRequest, current_user: dict = Depends(get_curren
         }).execute()
 
         supabase.rpc("increment_reputation", {"user_id": current_user["user_id"], "amount": 10}).execute()
+        
+        # Trigger background synthesis
+        background_tasks.add_task(build_master_notes, req.chapter_id)
+        
         return {"status": "success", "message": "Text note synced to collective hive"}
 
     except Exception as e:
@@ -78,6 +83,7 @@ async def sync_to_hive(req: SyncRequest, current_user: dict = Depends(get_curren
 @router.post("/upload-pdf")
 async def process_pdf(
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
     # --- ADD THESE 3 LINES ---
@@ -146,6 +152,9 @@ async def process_pdf(
             chapter_id=chapter_id,
             title=title # <-- ADD THIS LINE
         )
+            
+        # Trigger background synthesis
+        background_tasks.add_task(build_master_notes, chapter_id)
             
         return {"status": "success", "message": f"Successfully vectorized {len(chunks)} chunks."}
 

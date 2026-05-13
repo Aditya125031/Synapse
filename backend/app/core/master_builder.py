@@ -19,6 +19,13 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
 def build_master_notes(chapter_id: str):
+    # Phase 12: Idempotent - delete existing master notes for this chapter
+    try:
+        supabase.table("master_notes").delete().eq("chapter_id", chapter_id).execute()
+        neo4j_db.execute_query("MATCH (m:MasterTopic {chapter_id: $chapter_id}) DETACH DELETE m", parameters={"chapter_id": chapter_id})
+    except Exception as e:
+        print(f"Failed to clean up old master notes: {e}")
+
     # Fetch all content and embedding for the given chapter from the Supabase note_chunks table.
     response = supabase.table("note_chunks").select("id, content, embedding").eq("chapter_id", chapter_id).execute()
     chunks = response.data

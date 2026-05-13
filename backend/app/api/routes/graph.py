@@ -43,7 +43,7 @@ async def get_graph(chapter_id: str):
             if u and u.get("id"):
                 nodes[u["id"]] = {"id": u["id"], "type": "user"}
             if n and n.get("id"):
-                nodes[n["id"]] = {"id": n["id"], "type": "note"}
+                nodes[n["id"]] = {"id": n["id"], "type": "note", "title": n.get("title", "Note")}
             if m and m.get("id"):
                 nodes[m["id"]] = {"id": m["id"], "type": "master"}
                 
@@ -62,7 +62,7 @@ async def get_graph(chapter_id: str):
             if ug and ug.get("id"):
                 nodes[ug["id"]] = {"id": ug["id"], "type": "user"}
             if g and g.get("id"):
-                nodes[g["id"]] = {"id": g["id"], "type": "ghost"}
+                nodes[g["id"]] = {"id": g["id"], "type": "ghost", "title": g.get("title", "Ghost Note")}
             if m and m.get("id"):
                 nodes[m["id"]] = {"id": m["id"], "type": "master"}
                 
@@ -88,9 +88,12 @@ async def get_graph(chapter_id: str):
                 profiles_map = {p["id"]: p for p in profiles_res.data}
                 
                 for node_id, node_data in nodes.items():
-                    if node_data["type"] == "user" and node_id in profiles_map:
-                        node_data["full_name"] = profiles_map[node_id].get("full_name")
-                        node_data["avatar_url"] = profiles_map[node_id].get("avatar_url")
+                    if node_data["type"] == "user":
+                        if node_id in profiles_map:
+                            node_data["full_name"] = profiles_map[node_id].get("full_name") or "Student"
+                            node_data["avatar_url"] = profiles_map[node_id].get("avatar_url")
+                        else:
+                            node_data["full_name"] = "Student"
             except Exception as prof_err:
                 print(f"Failed to fetch profiles: {prof_err}")
                 
