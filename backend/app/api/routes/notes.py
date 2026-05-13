@@ -143,7 +143,8 @@ async def process_pdf(
             embeddings=result['embedding'],
             note_id=note_id,
             user_id=current_user["user_id"],
-            chapter_id=chapter_id
+            chapter_id=chapter_id,
+            title=title # <-- ADD THIS LINE
         )
             
         return {"status": "success", "message": f"Successfully vectorized {len(chunks)} chunks."}
