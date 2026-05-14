@@ -4,7 +4,7 @@ import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
 import { useState, useEffect, useRef } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2, Settings } from 'lucide-react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2, Settings, Pencil } from 'lucide-react'
 import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
@@ -34,6 +34,9 @@ export default function Dashboard() {
 
     const [isSyncingNode, setIsSyncingNode] = useState(false)
     const editorRef = useRef<any>(null)
+
+    const [editModalData, setEditModalData] = useState<{ type: 'class' | 'course' | 'chapter', id: string, name: string, description?: string, semester?: string } | null>(null)
+    const [deleteModalData, setDeleteModalData] = useState<{ type: 'class' | 'course' | 'chapter', id: string } | null>(null)
 
     // --- FETCH EFFECTS ---
     const fetchClasses = async () => {
@@ -286,6 +289,76 @@ export default function Dashboard() {
         } catch (error) { console.error(error); }
     };
 
+    const handleEditSubmit = async () => {
+        if (!editModalData) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            let url = "";
+            let body = {};
+            if (editModalData.type === 'class') {
+                url = `http://localhost:8000/api/classes/${editModalData.id}`;
+                body = { name: editModalData.name, description: editModalData.description };
+            } else if (editModalData.type === 'course') {
+                url = `http://localhost:8000/api/courses/${editModalData.id}`;
+                body = { name: editModalData.name, semester: editModalData.semester };
+            } else if (editModalData.type === 'chapter') {
+                url = `http://localhost:8000/api/courses/chapters/${editModalData.id}`;
+                body = { name: editModalData.name };
+            }
+
+            const res = await fetch(url, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                if (editModalData.type === 'class') {
+                    setClasses(prev => prev.map(c => c.id === editModalData.id ? { ...c, name: editModalData.name } : c));
+                } else if (editModalData.type === 'course') {
+                    setCourses(prev => prev.map(c => c.id === editModalData.id ? { ...c, name: editModalData.name, semester: editModalData.semester || '' } : c));
+                } else if (editModalData.type === 'chapter') {
+                    setChapters(prev => prev.map(c => c.id === editModalData.id ? { ...c, name: editModalData.name } : c));
+                }
+                setEditModalData(null);
+            } else alert("Failed to update: " + (await res.json()).detail);
+        } catch (error) { console.error(error); }
+    };
+
+    const handleDeleteSubmit = async () => {
+        if (!deleteModalData) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            let url = "";
+            if (deleteModalData.type === 'class') {
+                url = `http://localhost:8000/api/classes/${deleteModalData.id}`;
+            } else if (deleteModalData.type === 'course') {
+                url = `http://localhost:8000/api/courses/${deleteModalData.id}`;
+            } else if (deleteModalData.type === 'chapter') {
+                url = `http://localhost:8000/api/courses/chapters/${deleteModalData.id}`;
+            }
+
+            const res = await fetch(url, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${session?.access_token}` }
+            });
+
+            if (res.ok) {
+                if (deleteModalData.type === 'class') {
+                    setClasses(prev => prev.filter(c => c.id !== deleteModalData.id));
+                    if (activeClassId === deleteModalData.id) setActiveClassId(null);
+                } else if (deleteModalData.type === 'course') {
+                    setCourses(prev => prev.filter(c => c.id !== deleteModalData.id));
+                    if (activeCourseId === deleteModalData.id) setActiveCourseId(null);
+                } else if (deleteModalData.type === 'chapter') {
+                    setChapters(prev => prev.filter(c => c.id !== deleteModalData.id));
+                    if (activeChapterId === deleteModalData.id) setActiveChapterId(null);
+                }
+                setDeleteModalData(null);
+            } else alert("Failed to delete: " + (await res.json()).detail);
+        } catch (error) { console.error(error); }
+    };
+
     // --- UI RENDER ---
     return (
         <div className="h-screen w-full bg-[#050508] text-white flex overflow-hidden font-sans">
@@ -302,7 +375,15 @@ export default function Dashboard() {
                                 <span className="text-[10px] text-white/50 uppercase tracking-widest">{classes.find(c => c.id === activeClassId)?.role || "Workspace"}</span>
                             </div>
                         </div>
-                        <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${isClassDropdownOpen ? 'rotate-180' : ''}`} />
+                        <div className="flex items-center gap-1">
+                            {classes.find(c => c.id === activeClassId)?.role === 'admin' && activeClassId && (
+                                <>
+                                    <button onClick={(e) => { e.stopPropagation(); setEditModalData({ type: 'class', id: activeClassId, name: classes.find(c => c.id === activeClassId)?.name || '', description: '' }); }} className="p-1 hover:bg-white/10 rounded"><Pencil className="w-3.5 h-3.5 text-white/50 hover:text-white" /></button>
+                                    <button onClick={(e) => { e.stopPropagation(); setDeleteModalData({ type: 'class', id: activeClassId }); }} className="p-1 hover:bg-red-500/10 rounded"><Trash2 className="w-3.5 h-3.5 text-white/50 hover:text-red-400" /></button>
+                                </>
+                            )}
+                            <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${isClassDropdownOpen ? 'rotate-180' : ''}`} />
+                        </div>
                     </button>
                     {isClassDropdownOpen && (
                         <div className="absolute top-16 left-4 right-4 bg-[#0a0a0f] border border-white/10 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
@@ -347,10 +428,21 @@ export default function Dashboard() {
                             {!activeClassId && <p className="text-xs text-white/30 px-4 italic">Join or create a class to see courses.</p>}
                             {courses.map(course => (
                                 <div key={course.id} className="mb-1">
-                                    <button onClick={() => setActiveCourseId(course.id)} className={`w-full flex items-center justify-between px-4 py-2 mx-2 rounded-lg text-sm transition-all ${activeCourseId === course.id ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
-                                        <span className="flex items-center gap-3 truncate"><BookOpen className={`w-4 h-4 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} /> {course.name} <span className="text-[10px] text-white/30 ml-2">({course.semester})</span></span>
-                                        <ChevronRight className={`w-4 h-4 transition-transform ${activeCourseId === course.id ? "rotate-90 text-cyan-400" : ""}`} />
-                                    </button>
+                                    <div className={`flex items-center w-full mx-2 pr-2 rounded-lg text-sm transition-all group ${activeCourseId === course.id ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
+                                        <button onClick={() => setActiveCourseId(course.id)} className="flex-1 flex items-center gap-3 truncate px-4 py-2">
+                                            <BookOpen className={`w-4 h-4 shrink-0 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} /> 
+                                            <span className="truncate">{course.name} <span className="text-[10px] text-white/30 ml-2">({course.semester})</span></span>
+                                        </button>
+                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                                            {classes.find(c => c.id === activeClassId)?.role === 'admin' && (
+                                                <>
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditModalData({ type: 'course', id: course.id, name: course.name, semester: course.semester }); }} className="p-1 hover:text-white"><Pencil className="w-3.5 h-3.5 text-white/50 hover:text-white" /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setDeleteModalData({ type: 'course', id: course.id }); }} className="p-1 hover:text-red-400"><Trash2 className="w-3.5 h-3.5 text-white/50 hover:text-red-400" /></button>
+                                                </>
+                                            )}
+                                            <ChevronRight className={`w-4 h-4 transition-transform ${activeCourseId === course.id ? "rotate-90 text-cyan-400" : "text-white/50"}`} />
+                                        </div>
+                                    </div>
 
                                     {activeCourseId === course.id && (
                                         <div className="pl-4 pr-2 py-2 space-y-1 border-l-2 border-white/5 ml-6 mt-1">
@@ -362,9 +454,19 @@ export default function Dashboard() {
                                             <button onClick={() => setIsChapterModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-white/20 text-white/40 hover:text-white/80 hover:border-white/40 transition-all mb-2">+ Propose New Chapter</button>
                                             {chapters.map(chapter => (
                                                 <div key={chapter.id} className="mb-1">
-                                                    <button onClick={() => setActiveChapterId(chapter.id)} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-sm transition-colors ${activeChapterId === chapter.id ? "bg-indigo-500/30 text-white border border-indigo-500/50" : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"}`}>
-                                                        <span className="flex items-center gap-2 truncate"><Hash className="w-3 h-3 shrink-0" /> {chapter.name}</span>
-                                                    </button>
+                                                    <div className={`w-full flex items-center justify-between pr-2 rounded-lg text-sm transition-colors group ${activeChapterId === chapter.id ? "bg-indigo-500/30 text-white border border-indigo-500/50" : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"}`}>
+                                                        <button onClick={() => setActiveChapterId(chapter.id)} className="flex-1 flex items-center gap-2 truncate px-3 py-1.5">
+                                                            <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">{chapter.name}</span>
+                                                        </button>
+                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
+                                                            {classes.find(c => c.id === activeClassId)?.role === 'admin' && (
+                                                                <>
+                                                                    <button onClick={(e) => { e.stopPropagation(); setEditModalData({ type: 'chapter', id: chapter.id, name: chapter.name }); }} className="p-1 hover:text-white"><Pencil className="w-3.5 h-3.5 text-white/50 hover:text-white" /></button>
+                                                                    <button onClick={(e) => { e.stopPropagation(); setDeleteModalData({ type: 'chapter', id: chapter.id }); }} className="p-1 hover:text-red-400"><Trash2 className="w-3.5 h-3.5 text-white/50 hover:text-red-400" /></button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                     {activeChapterId === chapter.id && (
                                                         <div className="mt-2 space-y-1 pl-3 border-l-2 border-white/5 ml-2">
                                                             {chapterNotes.length === 0 ? <p className="text-[10px] text-white/30 px-2 italic py-1">No notes in the hive yet.</p> : chapterNotes.map(note => (
@@ -495,6 +597,39 @@ export default function Dashboard() {
                         <h3 className="text-xl font-bold mb-4 text-indigo-400">Propose Chapter</h3>
                         <input type="text" placeholder="Chapter Name" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-4 text-white outline-none" value={newChapterForm.name} onChange={e => setNewChapterForm({ ...newChapterForm, name: e.target.value })} />
                         <button onClick={handleCreateChapter} className="w-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 py-2 rounded-lg">Submit</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Modal */}
+            {editModalData && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-white/10 p-6 rounded-2xl w-96 relative shadow-2xl">
+                        <button onClick={() => setEditModalData(null)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        <h3 className="text-xl font-bold mb-4 text-white">Edit {editModalData.type.charAt(0).toUpperCase() + editModalData.type.slice(1)}</h3>
+                        <input type="text" placeholder="Name" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={editModalData.name} onChange={e => setEditModalData({ ...editModalData, name: e.target.value })} />
+                        {editModalData.type === 'class' && (
+                            <input type="text" placeholder="Description" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={editModalData.description || ''} onChange={e => setEditModalData({ ...editModalData, description: e.target.value })} />
+                        )}
+                        {editModalData.type === 'course' && (
+                            <input type="text" placeholder="Semester" className="w-full bg-white/5 border border-white/10 rounded-lg p-2 mb-3 text-white outline-none" value={editModalData.semester || ''} onChange={e => setEditModalData({ ...editModalData, semester: e.target.value })} />
+                        )}
+                        <button onClick={handleEditSubmit} className="w-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 py-2 rounded-lg hover:bg-indigo-500/30">Save Changes</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Modal */}
+            {deleteModalData && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-red-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(239,68,68,0.15)]">
+                        <button onClick={() => setDeleteModalData(null)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        <h3 className="text-xl font-bold mb-2 text-red-400">Confirm Deletion</h3>
+                        <p className="text-xs text-red-300/80 mb-6 font-medium">Warning: This will delete all underlying data (Notes, Chapters, Graph nodes). This cannot be undone.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setDeleteModalData(null)} className="flex-1 bg-white/5 hover:bg-white/10 text-white/70 py-2 rounded-lg transition-colors">Cancel</button>
+                            <button onClick={handleDeleteSubmit} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded-lg transition-colors shadow-lg shadow-red-500/20">Delete Forever</button>
+                        </div>
                     </div>
                 </div>
             )}

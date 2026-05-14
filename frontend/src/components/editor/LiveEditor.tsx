@@ -1,6 +1,6 @@
 "use client"
 
-import { forwardRef, useImperativeHandle, useState } from 'react'
+import { forwardRef, useImperativeHandle, useState, useEffect } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -30,10 +30,16 @@ const LiveEditor = forwardRef((props: LiveEditorProps, ref) => {
         editable: isActive, // Disable typing if no chapter is selected
         editorProps: {
             attributes: {
-                class: 'prose prose-invert max-w-none focus:outline-none min-h-[300px] text-white/80',
+                class: 'prose prose-invert max-w-none focus:outline-none min-h-[300px] text-white/80 pb-20',
             },
         },
     })
+
+    useEffect(() => {
+        if (editor) {
+            editor.setEditable(isActive);
+        }
+    }, [editor, isActive]);
 
     useImperativeHandle(ref, () => ({
         getText: () => editor?.getText() || "",
@@ -94,17 +100,17 @@ const LiveEditor = forwardRef((props: LiveEditorProps, ref) => {
 
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative">
                 {activeTab === 'type' ? (
-                    <div className="h-full flex flex-col">
-                        <div className="flex items-center gap-1 mb-4 pb-4 border-b border-white/5">
+                    // FIX: Changed h-full to min-h-full, added padding bottom, and ensured the container allows scrolling
+                    <div className="min-h-full flex flex-col pb-10">
+                        <div className="flex items-center gap-1 mb-4 pb-4 border-b border-white/5 sticky top-0 bg-[#050508]/90 backdrop-blur-md z-10 pt-2">
                             <button onClick={() => editor?.chain().focus().toggleBold().run()} className={`p-2 rounded hover:bg-white/10 ${editor?.isActive('bold') ? 'bg-white/10 text-cyan-400' : 'text-white/60'}`}><Bold className="w-4 h-4" /></button>
                             <button onClick={() => editor?.chain().focus().toggleItalic().run()} className={`p-2 rounded hover:bg-white/10 ${editor?.isActive('italic') ? 'bg-white/10 text-cyan-400' : 'text-white/60'}`}><Italic className="w-4 h-4" /></button>
                             <div className="w-px h-4 bg-white/10 mx-2"></div>
                             <button onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} className={`p-2 rounded hover:bg-white/10 ${editor?.isActive('heading', { level: 2 }) ? 'bg-white/10 text-cyan-400' : 'text-white/60'}`}><Heading2 className="w-4 h-4" /></button>
                             <button onClick={() => editor?.chain().focus().toggleBulletList().run()} className={`p-2 rounded hover:bg-white/10 ${editor?.isActive('bulletList') ? 'bg-white/10 text-cyan-400' : 'text-white/60'}`}><List className="w-4 h-4" /></button>
                         </div>
-                        <div className="flex-1 cursor-text">
-                            <EditorContent editor={editor} />
-                        </div>
+                        {/* FIX: Removed cursor-text restrictions so it naturally expands */}
+                        <EditorContent editor={editor} />
                     </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl bg-white/[0.01] hover:bg-white/[0.03] transition-colors relative">

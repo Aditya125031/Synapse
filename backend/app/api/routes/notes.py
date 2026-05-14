@@ -248,3 +248,15 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
     except Exception as e:
         print(f"Stitch error: {e}")
         raise HTTPException(status_code=500, detail="Failed to stitch notes")
+
+@router.get("/master-note/{chapter_id}")
+async def download_master_note(chapter_id: str):
+    # Fetch the master note content from Supabase
+    supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+    
+    res = supabase.table("master_notes").select("content").eq("chapter_id", chapter_id).execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Master note not found for this chapter yet.")
+        
+    return {"content": res.data[0]["content"]}

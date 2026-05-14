@@ -68,7 +68,7 @@ export default function Profile() {
 
                     <div className="space-y-1">
                         <label className="text-xs text-white/50 flex items-center gap-2"><User className="w-3 h-3" /> Full Name</label>
-                        <input name="full_name" value={f.full_name} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:border-cyan-500/50" />
+                        <input name="full_name" value={f.full_name || ''} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-sm focus:outline-none focus:border-cyan-500/50" />
                     </div>
 
                     <div className="space-y-1">

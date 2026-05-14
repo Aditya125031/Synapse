@@ -5,11 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from supabase import create_client, Client
 from app.api.dependencies import get_current_user
+from app.db.neo4j_client import neo4j_db
 
 router = APIRouter()
 supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
 class ClassCreate(BaseModel):
+    name: str
+    description: str = ""
+
+class ClassUpdate(BaseModel):
     name: str
     description: str = ""
 
@@ -101,3 +106,45 @@ async def reject_request(req: RequestAction, user: dict = Depends(get_current_us
     
     supabase.table("class_members").delete().eq("class_id", req.class_id).eq("user_id", req.user_id).execute()
     return {"status": "success", "message": "Request rejected."}
+
+@router.patch("/{class_id}")
+async def update_class(class_id: str, req: ClassUpdate, user: dict = Depends(get_current_user)):
+    admin_check = supabase.table("class_members").select("*").eq("class_id", class_id).eq("user_id", user["user_id"]).eq("role", "admin").execute()
+    if not admin_check.data:
+        raise HTTPException(status_code=403, detail="Not authorized.")
+        
+    updated = supabase.table("classes").update({
+        "name": req.name,
+        "description": req.description
+    }).eq("id", class_id).execute()
+    
+    return {"status": "success", "class": updated.data[0] if updated.data else None}
+
+@router.delete("/{class_id}")
+async def delete_class(class_id: str, user: dict = Depends(get_current_user)):
+    admin_check = supabase.table("class_members").select("*").eq("class_id", class_id).eq("user_id", user["user_id"]).eq("role", "admin").execute()
+    if not admin_check.data:
+        raise HTTPException(status_code=403, detail="Not authorized.")
+        
+    # Cascade preparation: Fetch all courses for this class
+    courses_res = supabase.table("courses").select("id").eq("class_id", class_id).execute()
+    course_ids = [c["id"] for c in courses_res.data] if courses_res.data else []
+    
+    if course_ids:
+        # Fetch all chapters for these courses
+        chapters_res = supabase.table("chapters").select("id").in_("course_id", course_ids).execute()
+        chapter_ids = [c["id"] for c in chapters_res.data] if chapters_res.data else []
+        
+        # Execute Neo4j cleanup
+        if chapter_ids:
+            try:
+                neo4j_db.execute_query(
+                    "MATCH (n) WHERE n.chapter_id IN $chapter_ids DETACH DELETE n",
+                    {"chapter_ids": chapter_ids}
+                )
+            except Exception as e:
+                print(f"Neo4j cleanup failed: {e}")
+                
+    # Execute Supabase delete
+    supabase.table("classes").delete().eq("id", class_id).execute()
+    return {"status": "success", "message": "Class deleted successfully"}
