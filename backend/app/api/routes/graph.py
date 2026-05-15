@@ -36,14 +36,19 @@ async def get_graph(chapter_id: str):
             n = record.get("n")
             u = record.get("u")
             m = record.get("m")
+            ct = record.get("ct")
             if n:
-                nodes[n["id"]] = {"id": n["id"], "type": "note", "title": n.get("title", "Note")}
+                node_data = {"id": n["id"], "type": "note", "title": n.get("title", "Note")}
+                if u:
+                    node_data["user_id"] = u["id"]
+                nodes[n["id"]] = node_data
                 if u:
                     nodes[u["id"]] = {"id": u["id"], "type": "user"}
                     links.append({"source": u["id"], "target": n["id"], "weight": 1.0})
                 if m:
                     nodes[m["id"]] = {"id": m["id"], "type": "master"}
-                    links.append({"source": n["id"], "target": m["id"], "weight": 0.8})
+                    edge_weight = ct.get("weight", 0.5) if ct else 0.5
+                    links.append({"source": n["id"], "target": m["id"], "weight": edge_weight})
 
         results2 = neo4j_db.execute_query(query2, parameters={"chapter_id": chapter_id})
         for record in results2:

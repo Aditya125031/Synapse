@@ -23,9 +23,6 @@ export default function Dashboard() {
     const [isMembersModalOpen, setIsMembersModalOpen] = useState(false)
     const [classMembers, setClassMembers] = useState<any[]>([])
 
-    const [isChatOpen, setIsChatOpen] = useState(false)
-    const [initialChatInput, setInitialChatInput] = useState("")
-
     const [courses, setCourses] = useState<{ id: string, name: string, semester: string }[]>([])
     const [activeCourseId, setActiveCourseId] = useState<string | null>(null)
     const [isCourseModalOpen, setIsCourseModalOpen] = useState(false)
@@ -44,7 +41,11 @@ export default function Dashboard() {
     const [editModalData, setEditModalData] = useState<{ type: 'class' | 'course' | 'chapter', id: string, name: string, description?: string, semester?: string } | null>(null)
     const [deleteModalData, setDeleteModalData] = useState<{ type: 'class' | 'course' | 'chapter', id: string } | null>(null)
 
-    const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
+    const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false)
+    const [initialChatInput, setInitialChatInput] = useState("")
+
+    const [isDoubtModalOpen, setIsDoubtModalOpen] = useState(false)
+    const [doubtData, setDoubtData] = useState({ targetUserId: '', noteTitle: '', message: '' })
 
     // --- FETCH EFFECTS ---
     const fetchClasses = async () => {
@@ -182,6 +183,25 @@ export default function Dashboard() {
                 fetchRequests(); // Refresh the modal list
             }
         } catch (error) { console.error(error); }
+    };
+
+    const handleAskDoubtSubmit = async () => {
+        if (!doubtData.message.trim() || !activeClassId) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            await supabase.from('class_chats').insert({
+                class_id: activeClassId,
+                user_id: session?.user?.id,
+                target_user_id: doubtData.targetUserId,
+                message: `[Regarding: ${doubtData.noteTitle}] ${doubtData.message}`,
+                is_doubt: true
+            });
+            setIsDoubtModalOpen(false);
+            setDoubtData({ targetUserId: '', noteTitle: '', message: '' });
+            setIsChatSidebarOpen(true);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     // --- COURSE/CHAPTER/EDITOR HANDLERS (Unchanged) ---
@@ -543,7 +563,7 @@ export default function Dashboard() {
                         <input type="text" placeholder="Search the collective graph..." className="w-full bg-white/5 border border-white/10 rounded-full py-1.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30 outline-none focus:border-cyan-500/50" />
                     </div>
                     {activeClassId && (
-                        <button onClick={() => setIsChatOpen(true)} className="ml-4 flex items-center gap-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">
+                        <button onClick={() => setIsChatSidebarOpen(true)} className="ml-4 flex items-center gap-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">
                             <MessageCircleQuestion className="w-4 h-4" /> Hive Chat
                         </button>
                     )}
@@ -564,9 +584,9 @@ export default function Dashboard() {
                     <div className="h-full">
                         <KnowledgeGraph
                             chapterId={activeChapterId || ""}
-                            onAskDoubt={(title) => {
-                                setIsChatOpen(true);
-                                setInitialChatInput(`[Doubt regarding Note: ${title}] `);
+                            onAskDoubt={(targetUserId, title) => {
+                                setDoubtData({ targetUserId, noteTitle: title, message: '' });
+                                setIsDoubtModalOpen(true);
                             }}
                         />
                     </div>
@@ -598,26 +618,6 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Class Members Modal */}
-            {isMembersModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-[#0a0a0f] border border-emerald-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(16,185,129,0.1)]">
-                        <button onClick={() => setIsMembersModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
-                        <h3 className="text-xl font-bold mb-4 text-emerald-400">Class Members</h3>
-                        <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-2">
-                            {classMembers.map((member, idx) => (
-                                <div key={idx} className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/10">
-                                    <img src={member.avatar_url || `https://ui-avatars.com/api/?name=${member.full_name || 'U'}`} alt="avatar" className="w-8 h-8 rounded-full" />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-white truncate">{member.full_name || 'Unknown User'}</p>
-                                        <p className="text-[10px] text-white/50 uppercase tracking-widest">{member.role}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Standard Create/Join Modals */}
             {isCreateClassModalOpen && (
@@ -709,8 +709,8 @@ export default function Dashboard() {
                             {classMembers.length === 0 ? (
                                 <p className="text-sm text-white/40">No members found.</p>
                             ) : (
-                                classMembers.map((member: any) => (
-                                    <div key={member.id} className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
+                                classMembers.map((member: any, idx: number) => (
+                                    <div key={idx} className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300 font-bold text-xs">
                                                 {member.full_name?.charAt(0) || "?"}
@@ -728,15 +728,31 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Chat Sidebar (If the agent created this component) */}
-            {/* Make sure ChatSidebar is imported at the top of the file! */}
-            {isChatSidebarOpen && (
-                <ChatSidebar
-                    classId={activeClassId}
-                    onClose={() => setIsChatSidebarOpen(false)}
-                    initialInput={initialChatInput}
-                />
+            {/* Ask Doubt Modal */}
+            {isDoubtModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-amber-500/30 p-6 rounded-2xl w-[400px] relative shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+                        <button onClick={() => setIsDoubtModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        <h3 className="text-xl font-bold mb-2 text-amber-400">Ask Doubt</h3>
+                        <p className="text-sm text-white/60 mb-4">Regarding: <span className="text-white font-medium">{doubtData.noteTitle}</span></p>
+                        <textarea
+                            placeholder="What's your question?"
+                            className="w-full bg-white/5 border border-white/10 focus:border-amber-500/50 rounded-lg p-3 text-white outline-none mb-4 h-32 resize-none custom-scrollbar"
+                            value={doubtData.message}
+                            onChange={e => setDoubtData({ ...doubtData, message: e.target.value })}
+                        />
+                        <button onClick={handleAskDoubtSubmit} className="w-full bg-amber-500 hover:bg-amber-400 text-black font-bold py-2 rounded-lg transition-colors">Send Doubt</button>
+                    </div>
+                </div>
             )}
+
+            {/* Chat Sidebar */}
+            <ChatSidebar
+                classId={activeClassId}
+                isOpen={isChatSidebarOpen}
+                onClose={() => setIsChatSidebarOpen(false)}
+                initialInput={initialChatInput}
+            />
 
         </div>
     );

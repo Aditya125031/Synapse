@@ -220,11 +220,11 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
             title = f"[GHOST] {ghost.get('title', 'Ghost Note')}"
             content = ghost.get('content', '')
             
-            # Save to Supabase notes table
-            res = supabase.table("notes").insert({
+            # Save to Supabase ghost_notes table
+            res = supabase.table("ghost_notes").insert({
                 "chapter_id": req.chapter_id,
                 "user_id": current_user["user_id"],
-                "title": title
+                "content": content
             }).execute()
             
             ghost_id = res.data[0]["id"]
@@ -232,7 +232,7 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
             # Save to Neo4j
             query = """
             MERGE (u:User {id: $user_id})
-            MERGE (g:GhostNote {id: $ghost_id, chapter_id: $chapter_id, title: $title, content: $content})
+            MERGE (g:GhostNote {id: $ghost_id, chapter_id: $chapter_id, content: $content})
             MERGE (m:MasterTopic {chapter_id: $chapter_id})
             MERGE (u)-[:RECEIVED_GHOST]->(g)
             MERGE (g)-[:DERIVED_FROM]->(m)
@@ -241,7 +241,6 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
                 "user_id": current_user["user_id"],
                 "ghost_id": ghost_id,
                 "chapter_id": req.chapter_id,
-                "title": title,
                 "content": content
             })
             

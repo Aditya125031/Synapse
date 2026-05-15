@@ -13,6 +13,7 @@ interface NodeData {
     title?: string;
     content?: string;
     avatar_url?: string;
+    user_id?: string;
     x?: number; y?: number; z?: number;
 }
 
@@ -34,7 +35,7 @@ const GraphNode = ({
     chapterId: string, 
     activeNodeId: string | null, 
     setActiveNodeId: (id: string | null) => void,
-    onAskDoubt?: (title: string) => void
+    onAskDoubt?: (targetUserId: string, title: string) => void
 }) => {
     const [hovered, setHovered] = useState(false);
     
@@ -199,7 +200,7 @@ const GraphNode = ({
                                         <span className="text-xs font-bold text-blue-300 truncate block">{titleLabel}</span>
                                     </div>
                                     <button onClick={() => handleDownloadNote(node.id, titleLabel)} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">📄 Download Text</button>
-                                    <button onClick={() => { onAskDoubt?.(titleLabel); setActiveNodeId(null); }} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">❓ Ask Doubt / Discuss</button>
+                                    <button onClick={() => { onAskDoubt?.(node.user_id || node.id, titleLabel); setActiveNodeId(null); }} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">❓ Ask Doubt / Discuss</button>
                                 </>
                             )}
 
@@ -244,7 +245,7 @@ const GraphLink = ({ sourceNode, targetNode, weight }: { sourceNode: NodeData, t
 };
 
 // --- 3. MAIN GRAPH CONTAINER ---
-export default function KnowledgeGraph({ chapterId, onAskDoubt }: { chapterId?: string, onAskDoubt?: (title: string) => void }) {
+export default function KnowledgeGraph({ chapterId, onAskDoubt }: { chapterId?: string, onAskDoubt?: (targetUserId: string, title: string) => void }) {
     const [nodes, setNodes] = useState<NodeData[]>([])
     const [links, setLinks] = useState<LinkData[]>([])
     const [loading, setLoading] = useState(false)
