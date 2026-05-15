@@ -232,7 +232,7 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
             # Save to Neo4j
             query = """
             MERGE (u:User {id: $user_id})
-            MERGE (g:GhostNote {id: $ghost_id, chapter_id: $chapter_id, title: $title})
+            MERGE (g:GhostNote {id: $ghost_id, chapter_id: $chapter_id, title: $title, content: $content})
             MERGE (m:MasterTopic {chapter_id: $chapter_id})
             MERGE (u)-[:RECEIVED_GHOST]->(g)
             MERGE (g)-[:DERIVED_FROM]->(m)
@@ -241,7 +241,8 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
                 "user_id": current_user["user_id"],
                 "ghost_id": ghost_id,
                 "chapter_id": req.chapter_id,
-                "title": title
+                "title": title,
+                "content": content
             })
             
         return {"status": "success", "ghost_notes": ghost_notes}
@@ -249,14 +250,24 @@ async def stitch_notes(req: StitchRequest, current_user: dict = Depends(get_curr
         print(f"Stitch error: {e}")
         raise HTTPException(status_code=500, detail="Failed to stitch notes")
 
-@router.get("/master-note/{chapter_id}")
-async def download_master_note(chapter_id: str):
-    # Fetch the master note content from Supabase
-    supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
-    
-    res = supabase.table("master_notes").select("content").eq("chapter_id", chapter_id).execute()
-    
-    if not res.data:
-        raise HTTPException(status_code=404, detail="Master note not found for this chapter yet.")
+@router.get("/{note_id}/download")
+async def download_note(note_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        # Fetch the note title
+        note_res = supabase.table("notes").select("title").eq("id", note_id).execute()
+        if not note_res.data:
+            raise HTTPException(status_code=404, detail="Note not found")
+        note_title = note_res.data[0]["title"]
         
-    return {"content": res.data[0]["content"]}
+        # Fetch chunks
+        chunks_res = supabase.table("note_chunks").select("content").eq("note_id", note_id).execute()
+        if not chunks_res.data:
+            raise HTTPException(status_code=404, detail="No content chunks found for this note")
+            
+        # Combine content
+        combined_text = "\n\n".join([chunk["content"] for chunk in chunks_res.data])
+        
+        return {"status": "success", "title": note_title, "content": combined_text}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))

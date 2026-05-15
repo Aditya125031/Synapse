@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Html, Line } from '@react-three/drei'
 import * as THREE from 'three'
+import { sb as supabase } from '@/lib/supabase'
 
 interface NodeData {
     id: string;
@@ -22,17 +23,18 @@ interface LinkData {
     weight?: number;
 }
 
-// --- 1. THE STABLE NODE COMPONENT ---
 const GraphNode = ({ 
     node, 
     chapterId, 
     activeNodeId, 
-    setActiveNodeId 
+    setActiveNodeId,
+    onAskDoubt
 }: { 
     node: NodeData, 
     chapterId: string, 
     activeNodeId: string | null, 
-    setActiveNodeId: (id: string | null) => void 
+    setActiveNodeId: (id: string | null) => void,
+    onAskDoubt?: (title: string) => void
 }) => {
     const [hovered, setHovered] = useState(false);
     
@@ -72,7 +74,10 @@ const GraphNode = ({
 
     const handleDownloadMaster = async () => {
         try {
-            const res = await fetch(`http://localhost:8000/api/notes/master-note/${chapterId}`);
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`http://localhost:8000/api/notes/master-note/${chapterId}`, {
+                headers: { "Authorization": `Bearer ${session?.access_token}` }
+            });
             if (!res.ok) throw new Error("Not found");
             const data = await res.json();
             
@@ -86,6 +91,28 @@ const GraphNode = ({
             setActiveNodeId(null); // Close menu after download
         } catch (e) {
             alert("Failed to download Master Note.");
+        }
+    };
+
+    const handleDownloadNote = async (noteId: string, title: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`http://localhost:8000/api/notes/${noteId}/download`, {
+                headers: { "Authorization": `Bearer ${session?.access_token}` }
+            });
+            if (!res.ok) throw new Error("Not found");
+            const data = await res.json();
+            
+            const blob = new Blob([data.content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title.replace(/\s+/g, '_')}.txt`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            setActiveNodeId(null);
+        } catch (e) {
+            alert("Failed to download Note.");
         }
     };
 
@@ -108,6 +135,11 @@ const GraphNode = ({
             <Html center zIndexRange={[100, 0]}>
                 <div className="relative flex flex-col items-center select-none w-48">
                     
+                    {/* ALWAYS ON LABEL */}
+                    <div className="text-[10px] text-white/50 whitespace-nowrap bg-black/40 px-1.5 py-0.5 rounded pointer-events-none select-none mt-4">
+                        {titleLabel}
+                    </div>
+
                     {/* HOVER TOOLTIPS (pointer-events-none prevents blocking clicks) */}
                     {showTooltip && (
                         <div className="absolute bottom-full mb-2 bg-[#0a0a0f]/95 border border-white/20 p-3 rounded-lg shadow-2xl pointer-events-none w-full text-center backdrop-blur-md">
@@ -133,7 +165,7 @@ const GraphNode = ({
                             {node.type === 'ghost' && (
                                 <div className="flex flex-col text-left">
                                     <span className="text-xs font-bold text-amber-500 mb-1 border-b border-amber-500/30 pb-1">⚠️ Missing Knowledge</span>
-                                    <p className="text-xs text-amber-100 mt-1 leading-relaxed">{node.content || "Data gap identified."}</p>
+                                    <p className="text-xs text-amber-100 mt-1 leading-relaxed">{node.content || node.title || "Data gap identified."}</p>
                                 </div>
                             )}
 
@@ -157,7 +189,7 @@ const GraphNode = ({
                                         <span className="text-xs font-bold text-white truncate">{titleLabel}</span>
                                     </div>
                                     <button onClick={() => alert("Messaging user...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-purple-400 hover:bg-white/10 rounded transition-colors">💬 Send Message</button>
-                                    <button onClick={() => alert("Viewing profile...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-purple-400 hover:bg-white/10 rounded transition-colors">👤 View Profile</button>
+                                    <button onClick={() => window.location.href = `/dashboard/profile/${node.id}`} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-purple-400 hover:bg-white/10 rounded transition-colors">👤 View Profile</button>
                                 </>
                             )}
 
@@ -166,8 +198,8 @@ const GraphNode = ({
                                     <div className="pb-2 mb-1 border-b border-white/10 px-2 pt-1">
                                         <span className="text-xs font-bold text-blue-300 truncate block">{titleLabel}</span>
                                     </div>
-                                    <button onClick={() => alert("Downloading raw note...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">📄 Download PDF</button>
-                                    <button onClick={() => alert("Opening doubt thread...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">❓ Ask Doubt / Discuss</button>
+                                    <button onClick={() => handleDownloadNote(node.id, titleLabel)} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">📄 Download Text</button>
+                                    <button onClick={() => { onAskDoubt?.(titleLabel); setActiveNodeId(null); }} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">❓ Ask Doubt / Discuss</button>
                                 </>
                             )}
 
@@ -212,7 +244,7 @@ const GraphLink = ({ sourceNode, targetNode, weight }: { sourceNode: NodeData, t
 };
 
 // --- 3. MAIN GRAPH CONTAINER ---
-export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
+export default function KnowledgeGraph({ chapterId, onAskDoubt }: { chapterId?: string, onAskDoubt?: (title: string) => void }) {
     const [nodes, setNodes] = useState<NodeData[]>([])
     const [links, setLinks] = useState<LinkData[]>([])
     const [loading, setLoading] = useState(false)
@@ -287,6 +319,7 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
                         chapterId={chapterId} 
                         activeNodeId={activeNodeId}
                         setActiveNodeId={setActiveNodeId}
+                        onAskDoubt={onAskDoubt}
                     />
                 ))}
             </Canvas>

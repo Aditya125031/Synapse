@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import LiveEditor from '@/components/editor/LiveEditor'
 import KnowledgeGraph from '@/components/graph/KnowledgeGraph'
+import ChatSidebar from '@/components/chat/ChatSidebar'
 import { useState, useEffect, useRef } from 'react'
-import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2, Settings, Pencil } from 'lucide-react'
+import { Search, Bell, CloudLightning, BookOpen, ChevronRight, Hash, Users, FileText, X, Plus, ChevronDown, Trash2, Settings, Pencil, MessageCircleQuestion } from 'lucide-react'
 import { sb as supabase } from '@/lib/supabase'
 
 export default function Dashboard() {
@@ -19,6 +20,11 @@ export default function Dashboard() {
 
     const [pendingRequests, setPendingRequests] = useState<any[]>([])
     const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false)
+    const [isMembersModalOpen, setIsMembersModalOpen] = useState(false)
+    const [classMembers, setClassMembers] = useState<any[]>([])
+    
+    const [isChatOpen, setIsChatOpen] = useState(false)
+    const [initialChatInput, setInitialChatInput] = useState("")
 
     const [courses, setCourses] = useState<{ id: string, name: string, semester: string }[]>([])
     const [activeCourseId, setActiveCourseId] = useState<string | null>(null)
@@ -138,6 +144,26 @@ export default function Dashboard() {
             if (res.ok) {
                 const data = await res.json();
                 setPendingRequests(data.requests);
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const fetchClassMembers = async () => {
+        if (!activeClassId) return;
+        try {
+            const { data, error } = await supabase
+                .from('class_members')
+                .select('role, profiles:user_id(full_name, avatar_url)')
+                .eq('class_id', activeClassId)
+                .eq('status', 'approved');
+            if (data) {
+                const formatted = data.map((m: any) => ({
+                    role: m.role,
+                    full_name: Array.isArray(m.profiles) ? m.profiles[0]?.full_name : m.profiles?.full_name,
+                    avatar_url: Array.isArray(m.profiles) ? m.profiles[0]?.avatar_url : m.profiles?.avatar_url
+                }));
+                setClassMembers(formatted);
+                setIsMembersModalOpen(true);
             }
         } catch (error) { console.error(error); }
     };
@@ -365,8 +391,8 @@ export default function Dashboard() {
             <aside className="w-72 border-r border-white/10 bg-[#050508] flex flex-col h-full relative z-20">
                 {/* CLASS DROPDOWN */}
                 <div className="h-16 shrink-0 relative border-b border-white/10 flex items-center px-4">
-                    <button onClick={() => setIsClassDropdownOpen(!isClassDropdownOpen)} className="w-full flex items-center justify-between hover:bg-white/5 p-2 rounded-xl transition-colors">
-                        <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-full flex items-center justify-between hover:bg-white/5 p-2 rounded-xl transition-colors">
+                        <div onClick={() => setIsClassDropdownOpen(!isClassDropdownOpen)} className="flex items-center gap-3 overflow-hidden cursor-pointer flex-1">
                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shrink-0">
                                 <span className="text-white font-bold text-sm">{classes.find(c => c.id === activeClassId)?.name?.charAt(0) || "!"}</span>
                             </div>
@@ -382,9 +408,11 @@ export default function Dashboard() {
                                     <button onClick={(e) => { e.stopPropagation(); setDeleteModalData({ type: 'class', id: activeClassId }); }} className="p-1 hover:bg-red-500/10 rounded"><Trash2 className="w-3.5 h-3.5 text-white/50 hover:text-red-400" /></button>
                                 </>
                             )}
-                            <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${isClassDropdownOpen ? 'rotate-180' : ''}`} />
+                            <button onClick={() => setIsClassDropdownOpen(!isClassDropdownOpen)} className="p-1 hover:bg-white/10 rounded">
+                                <ChevronDown className={`w-4 h-4 text-white/50 transition-transform ${isClassDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
                         </div>
-                    </button>
+                    </div>
                     {isClassDropdownOpen && (
                         <div className="absolute top-16 left-4 right-4 bg-[#0a0a0f] border border-white/10 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
                             <div className="max-h-48 overflow-y-auto custom-scrollbar">
@@ -406,6 +434,9 @@ export default function Dashboard() {
                                         <Bell className="w-4 h-4" /> Pending Requests
                                     </button>
                                 )}
+                                <button onClick={() => { fetchClassMembers(); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg">
+                                    <Users className="w-4 h-4" /> View Members
+                                </button>
                                 <button onClick={() => { setIsJoinClassModalOpen(true); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-indigo-400 hover:bg-indigo-500/10 rounded-lg">
                                     <Users className="w-4 h-4" /> Join Class
                                 </button>
@@ -429,10 +460,10 @@ export default function Dashboard() {
                             {courses.map(course => (
                                 <div key={course.id} className="mb-1">
                                     <div className={`flex items-center w-full mx-2 pr-2 rounded-lg text-sm transition-all group ${activeCourseId === course.id ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
-                                        <button onClick={() => setActiveCourseId(course.id)} className="flex-1 flex items-center gap-3 truncate px-4 py-2">
+                                        <div onClick={() => setActiveCourseId(course.id)} className="flex-1 flex items-center gap-3 truncate px-4 py-2 cursor-pointer">
                                             <BookOpen className={`w-4 h-4 shrink-0 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} /> 
                                             <span className="truncate">{course.name} <span className="text-[10px] text-white/30 ml-2">({course.semester})</span></span>
-                                        </button>
+                                        </div>
                                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
                                             {classes.find(c => c.id === activeClassId)?.role === 'admin' && (
                                                 <>
@@ -455,9 +486,9 @@ export default function Dashboard() {
                                             {chapters.map(chapter => (
                                                 <div key={chapter.id} className="mb-1">
                                                     <div className={`w-full flex items-center justify-between pr-2 rounded-lg text-sm transition-colors group ${activeChapterId === chapter.id ? "bg-indigo-500/30 text-white border border-indigo-500/50" : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/20 hover:bg-indigo-500/20"}`}>
-                                                        <button onClick={() => setActiveChapterId(chapter.id)} className="flex-1 flex items-center gap-2 truncate px-3 py-1.5">
+                                                        <div onClick={() => setActiveChapterId(chapter.id)} className="flex-1 flex items-center gap-2 truncate px-3 py-1.5 cursor-pointer">
                                                             <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">{chapter.name}</span>
-                                                        </button>
+                                                        </div>
                                                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
                                                             {classes.find(c => c.id === activeClassId)?.role === 'admin' && (
                                                                 <>
@@ -509,6 +540,11 @@ export default function Dashboard() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                         <input type="text" placeholder="Search the collective graph..." className="w-full bg-white/5 border border-white/10 rounded-full py-1.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30 outline-none focus:border-cyan-500/50" />
                     </div>
+                    {activeClassId && (
+                        <button onClick={() => setIsChatOpen(true)} className="ml-4 flex items-center gap-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/50 hover:bg-indigo-500/30 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">
+                            <MessageCircleQuestion className="w-4 h-4" /> Hive Chat
+                        </button>
+                    )}
                 </header>
 
                 <div className="flex-1 p-6 grid grid-cols-2 gap-6 overflow-hidden min-h-0">
@@ -524,7 +560,13 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="h-full">
-                        <KnowledgeGraph chapterId={activeChapterId || ""} />
+                        <KnowledgeGraph 
+                            chapterId={activeChapterId || ""} 
+                            onAskDoubt={(title) => {
+                                setIsChatOpen(true);
+                                setInitialChatInput(`[Doubt regarding Note: ${title}] `);
+                            }}
+                        />
                     </div>
                 </div>
             </main>
@@ -550,6 +592,27 @@ export default function Dashboard() {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Class Members Modal */}
+            {isMembersModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-emerald-500/30 p-6 rounded-2xl w-96 relative shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+                        <button onClick={() => setIsMembersModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        <h3 className="text-xl font-bold mb-4 text-emerald-400">Class Members</h3>
+                        <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+                            {classMembers.map((member, idx) => (
+                                <div key={idx} className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/10">
+                                    <img src={member.avatar_url || `https://ui-avatars.com/api/?name=${member.full_name || 'U'}`} alt="avatar" className="w-8 h-8 rounded-full" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-white truncate">{member.full_name || 'Unknown User'}</p>
+                                        <p className="text-[10px] text-white/50 uppercase tracking-widest">{member.role}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
@@ -633,6 +696,15 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+                </div>
+            )}
+
+            <ChatSidebar 
+                classId={activeClassId} 
+                isOpen={isChatOpen} 
+                onClose={() => setIsChatOpen(false)} 
+                initialInput={initialChatInput} 
+            />
         </div>
     )
 }
