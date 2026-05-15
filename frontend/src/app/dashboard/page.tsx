@@ -22,7 +22,7 @@ export default function Dashboard() {
     const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false)
     const [isMembersModalOpen, setIsMembersModalOpen] = useState(false)
     const [classMembers, setClassMembers] = useState<any[]>([])
-    
+
     const [isChatOpen, setIsChatOpen] = useState(false)
     const [initialChatInput, setInitialChatInput] = useState("")
 
@@ -43,6 +43,8 @@ export default function Dashboard() {
 
     const [editModalData, setEditModalData] = useState<{ type: 'class' | 'course' | 'chapter', id: string, name: string, description?: string, semester?: string } | null>(null)
     const [deleteModalData, setDeleteModalData] = useState<{ type: 'class' | 'course' | 'chapter', id: string } | null>(null)
+
+    const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
 
     // --- FETCH EFFECTS ---
     const fetchClasses = async () => {
@@ -461,7 +463,7 @@ export default function Dashboard() {
                                 <div key={course.id} className="mb-1">
                                     <div className={`flex items-center w-full mx-2 pr-2 rounded-lg text-sm transition-all group ${activeCourseId === course.id ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
                                         <div onClick={() => setActiveCourseId(course.id)} className="flex-1 flex items-center gap-3 truncate px-4 py-2 cursor-pointer">
-                                            <BookOpen className={`w-4 h-4 shrink-0 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} /> 
+                                            <BookOpen className={`w-4 h-4 shrink-0 ${activeCourseId === course.id ? 'text-cyan-400' : ''}`} />
                                             <span className="truncate">{course.name} <span className="text-[10px] text-white/30 ml-2">({course.semester})</span></span>
                                         </div>
                                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1">
@@ -560,8 +562,8 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="h-full">
-                        <KnowledgeGraph 
-                            chapterId={activeChapterId || ""} 
+                        <KnowledgeGraph
+                            chapterId={activeChapterId || ""}
                             onAskDoubt={(title) => {
                                 setIsChatOpen(true);
                                 setInitialChatInput(`[Doubt regarding Note: ${title}] `);
@@ -696,15 +698,46 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Class Members Modal */}
+            {isMembersModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-[#0a0a0f] border border-white/10 p-6 rounded-2xl w-96 relative shadow-2xl">
+                        <button onClick={() => setIsMembersModalOpen(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-5 h-5" /></button>
+                        <h3 className="text-xl font-bold mb-4 text-white flex items-center gap-2"><Users className="w-5 h-5 text-indigo-400" /> Class Members</h3>
+                        <div className="max-h-64 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                            {classMembers.length === 0 ? (
+                                <p className="text-sm text-white/40">No members found.</p>
+                            ) : (
+                                classMembers.map((member: any) => (
+                                    <div key={member.id} className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-300 font-bold text-xs">
+                                                {member.full_name?.charAt(0) || "?"}
+                                            </div>
+                                            <span className="text-sm text-white/80 font-medium">{member.full_name || "Unknown"}</span>
+                                        </div>
+                                        <span className={`text-[10px] uppercase tracking-widest px-2 py-1 rounded ${member.role === 'admin' ? 'bg-amber-500/20 text-amber-400' : 'bg-white/10 text-white/50'}`}>
+                                            {member.role}
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
 
-            <ChatSidebar 
-                classId={activeClassId} 
-                isOpen={isChatOpen} 
-                onClose={() => setIsChatOpen(false)} 
-                initialInput={initialChatInput} 
-            />
+            {/* Chat Sidebar (If the agent created this component) */}
+            {/* Make sure ChatSidebar is imported at the top of the file! */}
+            {isChatSidebarOpen && (
+                <ChatSidebar
+                    classId={activeClassId}
+                    onClose={() => setIsChatSidebarOpen(false)}
+                    initialInput={initialChatInput}
+                />
+            )}
+
         </div>
-    )
+    );
 }
