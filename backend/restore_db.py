@@ -99,6 +99,7 @@ def restore_supabase():
             chapter_id UUID REFERENCES public.chapters(id) ON DELETE CASCADE,
             user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
             title TEXT NOT NULL,
+            is_flagged BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
         );
 
@@ -121,7 +122,44 @@ def restore_supabase():
             created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
         );
 
-        -- 9. RPC Function: Increment Reputation
+        -- 9. Ghost Notes (AI Identified Gaps)
+        CREATE TABLE IF NOT EXISTS public.ghost_notes (
+            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+            user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+            chapter_id UUID REFERENCES public.chapters(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+        );
+
+        -- 10. God Notes (Course Summaries)
+        CREATE TABLE IF NOT EXISTS public.god_notes (
+            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+            course_id UUID REFERENCES public.courses(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+        );
+
+        -- 11. Unblock RLS for seamless AI processing
+        ALTER TABLE public.god_notes DISABLE ROW LEVEL SECURITY;
+        ALTER TABLE public.ghost_notes DISABLE ROW LEVEL SECURITY;
+        ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
+
+        -- 12. Auto-Profile Trigger for New Signups
+        CREATE OR REPLACE FUNCTION public.handle_new_user()
+        RETURNS trigger AS $$
+        BEGIN
+          INSERT INTO public.profiles (id, full_name, avatar_url, reputation)
+          VALUES (new.id, split_part(new.email, '@', 1), '', 0);
+          RETURN new;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+        DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+        CREATE TRIGGER on_auth_user_created
+          AFTER INSERT ON auth.users
+          FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+        -- 13. RPC Function: Increment Reputation
         CREATE OR REPLACE FUNCTION increment_reputation(user_id UUID, amount INT)
         RETURNS void AS $$
         BEGIN

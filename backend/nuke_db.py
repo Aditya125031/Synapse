@@ -31,6 +31,8 @@ def nuke_supabase():
         
         # We must delete in this exact order (Bottom-Up) to avoid Foreign Key blockages!
         tables_to_nuke = [
+            "ghost_notes",    # AI generated missing concepts
+            "god_notes",      # AI generated course summaries
             "master_notes",   # AI generated master notes
             "note_chunks",    # Vectorized chunks
             "notes",          # Parent notes
