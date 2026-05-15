@@ -151,24 +151,31 @@ export default function Dashboard() {
         } catch (error) { console.error(error); }
     };
 
-    const fetchClassMembers = async () => {
+
+    const handleViewMembers = async () => {
         if (!activeClassId) return;
         try {
+            // Join class_members with the profiles table
             const { data, error } = await supabase
                 .from('class_members')
-                .select('role, profiles:user_id(full_name, avatar_url)')
+                .select(`role, user_id, profiles(full_name, avatar_url)`)
                 .eq('class_id', activeClassId)
                 .eq('status', 'approved');
+
             if (data) {
-                const formatted = data.map((m: any) => ({
+                const formattedMembers = data.map((m: any) => ({
+                    id: m.user_id,
                     role: m.role,
-                    full_name: Array.isArray(m.profiles) ? m.profiles[0]?.full_name : m.profiles?.full_name,
-                    avatar_url: Array.isArray(m.profiles) ? m.profiles[0]?.avatar_url : m.profiles?.avatar_url
+                    full_name: m.profiles?.full_name || 'Unknown User',
+                    avatar_url: m.profiles?.avatar_url
                 }));
-                setClassMembers(formatted);
+                setClassMembers(formattedMembers);
                 setIsMembersModalOpen(true);
+                setIsClassDropdownOpen(false); // Close the dropdown menu
             }
-        } catch (error) { console.error(error); }
+        } catch (err) {
+            console.error("Failed to fetch members:", err);
+        }
     };
 
     const handleRequestAction = async (userId: string, action: 'approve' | 'reject') => {
@@ -456,7 +463,7 @@ export default function Dashboard() {
                                         <Bell className="w-4 h-4" /> Pending Requests
                                     </button>
                                 )}
-                                <button onClick={() => { fetchClassMembers(); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg">
+                                <button onClick={handleViewMembers} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded-lg">
                                     <Users className="w-4 h-4" /> View Members
                                 </button>
                                 <button onClick={() => { setIsJoinClassModalOpen(true); setIsClassDropdownOpen(false); }} className="w-full flex items-center gap-2 px-2 py-2 text-sm text-indigo-400 hover:bg-indigo-500/10 rounded-lg">
