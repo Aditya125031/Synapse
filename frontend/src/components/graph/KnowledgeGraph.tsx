@@ -23,30 +23,52 @@ interface LinkData {
 }
 
 // --- 1. THE STABLE NODE COMPONENT ---
-const GraphNode = ({ node, chapterId }: { node: NodeData, chapterId: string }) => {
+const GraphNode = ({ 
+    node, 
+    chapterId, 
+    activeNodeId, 
+    setActiveNodeId 
+}: { 
+    node: NodeData, 
+    chapterId: string, 
+    activeNodeId: string | null, 
+    setActiveNodeId: (id: string | null) => void 
+}) => {
     const [hovered, setHovered] = useState(false);
-    const [active, setActive] = useState(false); // Used for stable click menus!
+    
+    // Check if THIS node is the currently clicked one
+    const isActive = activeNodeId === node.id;
+    // Only show hover tooltips if no menu is currently active on this node
+    const showTooltip = hovered && !isActive;
 
     let color = '#3b82f6';
     let radius = 2;
-    let label = node.title || 'Note';
+    let titleLabel = node.title || 'Note';
 
     if (node.type === 'user') {
         color = '#a855f7';
         radius = 3;
-        label = node.full_name || 'Student';
+        titleLabel = node.full_name || 'Student';
     } else if (node.type === 'master') {
         color = '#22d3ee';
         radius = 4;
-        label = 'Master Topic';
+        titleLabel = 'Master Topic';
     } else if (node.type === 'ghost') {
         color = '#f59e0b';
         radius = 2;
-        label = 'Ghost Concept';
+        titleLabel = 'Missing Concept';
     }
 
-    // Dynamic Avatar Generator
-    const displayAvatar = node.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(label)}&background=random`;
+    const displayAvatar = node.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(titleLabel)}&background=random`;
+
+    const handleNodeClick = (e: any) => {
+        e.stopPropagation();
+        // Ghost notes are not clickable, only hoverable
+        if (node.type === 'ghost') return; 
+        
+        // Toggle menu: close if already open, open if closed
+        setActiveNodeId(isActive ? null : node.id);
+    };
 
     const handleDownloadMaster = async () => {
         try {
@@ -54,7 +76,6 @@ const GraphNode = ({ node, chapterId }: { node: NodeData, chapterId: string }) =
             if (!res.ok) throw new Error("Not found");
             const data = await res.json();
             
-            // Trigger browser download
             const blob = new Blob([data.content], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -62,7 +83,7 @@ const GraphNode = ({ node, chapterId }: { node: NodeData, chapterId: string }) =
             a.download = `Master_Note_${chapterId.substring(0,6)}.txt`;
             a.click();
             window.URL.revokeObjectURL(url);
-            setActive(false);
+            setActiveNodeId(null); // Close menu after download
         } catch (e) {
             alert("Failed to download Master Note.");
         }
@@ -71,64 +92,90 @@ const GraphNode = ({ node, chapterId }: { node: NodeData, chapterId: string }) =
     return (
         <mesh
             position={[node.x || 0, node.y || 0, node.z || 0]}
-            onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
-            onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto'; }}
-            onClick={(e) => { e.stopPropagation(); setActive(!active); }}
+            onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = node.type === 'ghost' ? 'auto' : 'pointer'; }}
+            onPointerOut={(e) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto'; }}
+            onClick={handleNodeClick}
         >
             <sphereGeometry args={[radius, 32, 32]} />
             <meshStandardMaterial 
                 color={color} 
                 transparent={node.type === 'ghost'} 
                 opacity={node.type === 'ghost' ? 0.7 : 1} 
+                emissive={isActive ? color : '#000000'} // Glow when active
+                emissiveIntensity={0.5}
             />
 
             <Html center zIndexRange={[100, 0]}>
-                <div className="relative pointer-events-none flex flex-col items-center">
+                <div className="relative flex flex-col items-center select-none w-48">
                     
-                    {/* ALWAYS VISIBLE LABEL (Shows DP on hover) */}
-                    <div className="text-[10px] font-bold text-white bg-black/80 px-2 py-1 rounded-md border border-white/10 flex items-center gap-2 mt-4 whitespace-nowrap">
-                        {(hovered || active) && node.type === 'user' && (
-                            <img src={displayAvatar} alt="DP" className="w-4 h-4 rounded-full" />
-                        )}
-                        {label}
-                    </div>
-
-                    {/* CLICK-TO-OPEN MENUS (Pointer-events-auto makes them clickable!) */}
-                    {active && (
-                        <div className="absolute top-full mt-2 bg-[#0a0a0f]/95 border border-white/20 p-2 rounded-lg flex flex-col gap-1 w-40 shadow-2xl pointer-events-auto z-50">
+                    {/* HOVER TOOLTIPS (pointer-events-none prevents blocking clicks) */}
+                    {showTooltip && (
+                        <div className="absolute bottom-full mb-2 bg-[#0a0a0f]/95 border border-white/20 p-3 rounded-lg shadow-2xl pointer-events-none w-full text-center backdrop-blur-md">
                             
-                            {/* USER MENU */}
+                            {node.type === 'user' && (
+                                <div className="flex flex-col items-center gap-2">
+                                    <img src={displayAvatar} alt="DP" className="w-10 h-10 rounded-full border border-purple-500/50" />
+                                    <span className="text-sm font-bold text-white">{titleLabel}</span>
+                                    <span className="text-[10px] text-purple-300 uppercase tracking-wider">Contributor</span>
+                                </div>
+                            )}
+
+                            {node.type === 'note' && (
+                                <div className="flex flex-col text-left">
+                                    <span className="text-xs font-bold text-blue-400 mb-1">Student Note</span>
+                                    <span className="text-sm font-semibold text-white truncate">{titleLabel}</span>
+                                    {node.content && (
+                                        <p className="text-xs text-white/60 mt-1 line-clamp-2">{node.content}</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {node.type === 'ghost' && (
+                                <div className="flex flex-col text-left">
+                                    <span className="text-xs font-bold text-amber-500 mb-1 border-b border-amber-500/30 pb-1">⚠️ Missing Knowledge</span>
+                                    <p className="text-xs text-amber-100 mt-1 leading-relaxed">{node.content || "Data gap identified."}</p>
+                                </div>
+                            )}
+
+                            {node.type === 'master' && (
+                                <div className="flex flex-col items-center">
+                                    <span className="text-xs font-bold text-cyan-400 mb-1 uppercase tracking-widest flex items-center gap-1">👑 Master Guide</span>
+                                    <p className="text-[10px] text-cyan-100/70 text-center mt-1">AI-Synthesized Collective Knowledge</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* CLICK-TO-OPEN MENUS (pointer-events-auto allows button clicks) */}
+                    {isActive && (
+                        <div className="absolute top-full mt-2 bg-[#0a0a0f]/95 border border-white/20 p-2 rounded-lg flex flex-col gap-1 w-full shadow-2xl pointer-events-auto z-50 backdrop-blur-xl">
+                            
                             {node.type === 'user' && (
                                 <>
-                                    <div className="flex items-center gap-3 pb-2 mb-1 border-b border-white/10">
-                                        <img src={displayAvatar} className="w-8 h-8 rounded-full" />
-                                        <span className="text-xs font-bold text-white truncate">{label}</span>
+                                    <div className="flex items-center gap-3 pb-2 mb-1 border-b border-white/10 px-2 pt-1">
+                                        <img src={displayAvatar} className="w-6 h-6 rounded-full" />
+                                        <span className="text-xs font-bold text-white truncate">{titleLabel}</span>
                                     </div>
-                                    <button onClick={() => alert("Messaging user...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-cyan-400 hover:bg-white/10 rounded">💬 Message</button>
-                                    <button onClick={() => alert("Viewing profile...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-cyan-400 hover:bg-white/10 rounded">👤 View Profile</button>
+                                    <button onClick={() => alert("Messaging user...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-purple-400 hover:bg-white/10 rounded transition-colors">💬 Send Message</button>
+                                    <button onClick={() => alert("Viewing profile...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-purple-400 hover:bg-white/10 rounded transition-colors">👤 View Profile</button>
                                 </>
                             )}
 
-                            {/* NOTE MENU */}
                             {node.type === 'note' && (
                                 <>
-                                    <button onClick={() => alert("Downloading raw note...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-indigo-400 hover:bg-white/10 rounded">⬇ Download PDF</button>
-                                    <button onClick={() => alert("Opening doubt thread...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-amber-400 hover:bg-white/10 rounded">❓ Ask Doubt</button>
+                                    <div className="pb-2 mb-1 border-b border-white/10 px-2 pt-1">
+                                        <span className="text-xs font-bold text-blue-300 truncate block">{titleLabel}</span>
+                                    </div>
+                                    <button onClick={() => alert("Downloading raw note...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">📄 Download PDF</button>
+                                    <button onClick={() => alert("Opening doubt thread...")} className="text-xs text-left px-2 py-1.5 text-white/80 hover:text-blue-400 hover:bg-white/10 rounded transition-colors">❓ Ask Doubt / Discuss</button>
                                 </>
                             )}
 
-                            {/* MASTER NOTE MENU */}
                             {node.type === 'master' && (
-                                <button onClick={handleDownloadMaster} className="text-xs text-center font-bold px-2 py-2 text-cyan-900 bg-cyan-400 hover:bg-cyan-300 rounded">
-                                    ⬇ Download Master Guide
-                                </button>
-                            )}
-
-                            {/* GHOST NOTE DATA */}
-                            {node.type === 'ghost' && (
-                                <div className="text-xs text-amber-200 p-1">
-                                    <span className="font-bold text-amber-500 block mb-1">Missing Concept:</span>
-                                    {node.content || "Loading concept details..."}
+                                <div className="p-1">
+                                    <button onClick={handleDownloadMaster} className="w-full text-xs text-center font-bold px-2 py-2 text-[#0a0a0f] bg-cyan-400 hover:bg-cyan-300 rounded shadow-[0_0_10px_rgba(34,211,238,0.4)] transition-all">
+                                        ⬇ Download Guide
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -151,8 +198,6 @@ const GraphLink = ({ sourceNode, targetNode, weight }: { sourceNode: NodeData, t
 
     if (!points) return null;
 
-    // Scale the weight dramatically so differences are visible
-    // A weight of 1.0 becomes 6px thick, a weight of 0.1 becomes 1px thick.
     const lineThickness = Math.max(1, (weight || 0.5) * 6);
 
     return (
@@ -171,6 +216,9 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
     const [nodes, setNodes] = useState<NodeData[]>([])
     const [links, setLinks] = useState<LinkData[]>([])
     const [loading, setLoading] = useState(false)
+    
+    // NEW: Manage the active node state globally so clicks on empty space work!
+    const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!chapterId) {
@@ -216,8 +264,11 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
                 </div>
             )}
             
-            {/* Click empty space to close all menus */}
-            <Canvas camera={{ position: [0, 0, 60], fov: 60 }} onPointerMissed={() => document.dispatchEvent(new Event('click'))}>
+            {/* onPointerMissed now successfully clears the active state! */}
+            <Canvas 
+                camera={{ position: [0, 0, 60], fov: 60 }} 
+                onPointerMissed={() => setActiveNodeId(null)}
+            >
                 <ambientLight intensity={0.5} />
                 <pointLight position={[100, 100, 100]} intensity={1} />
                 <OrbitControls enableDamping dampingFactor={0.05} />
@@ -230,7 +281,13 @@ export default function KnowledgeGraph({ chapterId }: { chapterId?: string }) {
                 })}
 
                 {nodes.map(node => (
-                    <GraphNode key={node.id} node={node} chapterId={chapterId} />
+                    <GraphNode 
+                        key={node.id} 
+                        node={node} 
+                        chapterId={chapterId} 
+                        activeNodeId={activeNodeId}
+                        setActiveNodeId={setActiveNodeId}
+                    />
                 ))}
             </Canvas>
         </div>
